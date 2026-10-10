@@ -7,6 +7,12 @@ agent. Each card shows status, what the agent is doing right now, model, git bra
 PR and CI state, and its bead. Click a card to open a verbose details drawer;
 double-click to jump to that agent's pane.
 
+![The dashboard cycling through the graph, grid, tree, fan and table views, with a comet circling working cards and blocked and done agents pulsing](docs/dashboard.gif)
+
+The recording uses made-up agents. Working agents get a comet circling their card
+(and a sweeping `⬢`), blocked agents flash amber, and done agents pulse green; set
+`animate = false` for static colours.
+
 > Status: early. macOS and Linux.
 
 > **Claude Code only, for now.** Model, activity phase, live monitors, context size, the
