@@ -1,0 +1,23 @@
+id = "kristaxox.claude-dashboard"
+name = "Claude Dashboard"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Network-topology style dashboard for Herdr agents: bead, branch, model, PR and CI. Click a node to jump to it."
+platforms = ["macos", "linux"]
+
+[[build]]
+command = ["sh", "-c", "mkdir -p bin && go build -o bin/dashboard ./cmd/dashboard"]
+
+[[panes]]
+id = "dashboard"
+title = "Agent Dashboard"
+placement = "popup"
+width = "100%"
+height = "100%"
+command = ["./bin/dashboard"]
+
+[[actions]]
+id = "open"
+title = "Open agent dashboard"
+contexts = ["global"]
+command = ["sh", "-c", 'exec "${HERDR_BIN_PATH:-herdr}" plugin pane open --plugin kristaxox.claude-dashboard --entrypoint dashboard --focus']
