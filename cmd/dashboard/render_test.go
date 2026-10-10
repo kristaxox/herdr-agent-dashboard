@@ -71,3 +71,25 @@ func TestCardAnimation(t *testing.T) {
 		t.Error("done card does not pulse")
 	}
 }
+
+// a selected row is reverse video from end to end: nothing inside it may reset all attributes
+func TestSelectedRowStaysInverted(t *testing.T) {
+	m := model{w: 120, h: 40, prs: map[string]PR{}, open: map[string]bool{}, details: map[string]Detail{}, mode: 0,
+		agents: []Agent{{Name: "a", PaneID: "p1", Status: "working", Repo: "r", Branch: "main"}}}
+	for _, mode := range []int{0, 3} { // tree, table
+		m.mode = mode
+		lines, _ := m.render()
+		found := false
+		for _, l := range lines {
+			if strings.Contains(l, "\x1b[7m") {
+				found = true
+				if strings.Contains(l, "\x1b[0m") {
+					t.Errorf("%s: selected row resets attributes: %q", modes[mode], l)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: no selected row", modes[mode])
+		}
+	}
+}
