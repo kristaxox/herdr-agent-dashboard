@@ -29,3 +29,5 @@ card_min_width = 40              # cards per row = terminal width / this
 description_lines = 18           # bead description lines shown in the drawer
 said_chars = 500                 # length of the agent's last message in the drawer
 recent_tools = 6                 # tool calls listed under RECENT
+animate = true                   # comet on working cards, amber flash on blocked, green pulse on done
+close_on_jump = false            # true = double-click/enter focuses the pane, then closes the dashboard

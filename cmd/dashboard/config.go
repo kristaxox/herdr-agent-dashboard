@@ -29,6 +29,8 @@ type Config struct {
 	DescriptionMax int      `toml:"description_lines"`
 	SaidChars      int      `toml:"said_chars"`
 	RecentTools    int      `toml:"recent_tools"`
+	CloseOnJump    bool     `toml:"close_on_jump"` // double-click/enter closes the dashboard after focusing the pane
+	Animate        bool     `toml:"animate"`       // comet on working cards, amber flash on blocked ones
 }
 
 var cfg = defaultConfig()
@@ -39,7 +41,7 @@ func defaultConfig() Config {
 		DoubleClickMs: 400, ExpandOnClick: true, BeadPattern: `^[a-z]+-[a-z0-9]+$`,
 		ExtraPath: []string{"~/.local/bin", "~/go/bin", "/opt/homebrew/bin", "/usr/local/bin"},
 		OwnerMode: "primary", SessionTailKB: 1024, CardMinWidth: 40,
-		DescriptionMax: 18, SaidChars: 500, RecentTools: 6,
+		DescriptionMax: 18, SaidChars: 500, RecentTools: 6, Animate: true,
 	}
 }
 
