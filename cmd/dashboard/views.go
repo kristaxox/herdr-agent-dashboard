@@ -19,6 +19,21 @@ func (m model) beadTag(a Agent) string {
 	return ""
 }
 
+func tri(open bool) string {
+	if open {
+		return c(214, "▾")
+	}
+	return c(245, "▸")
+}
+
+func indent(ls []string, n int) []string {
+	out := make([]string, len(ls))
+	for i, l := range ls {
+		out[i] = strings.Repeat(" ", n) + l
+	}
+	return out
+}
+
 func sel(s string, on bool) string {
 	if on {
 		return "\x1b[7m" + s + "\x1b[27m"
@@ -49,10 +64,13 @@ func (m model) treeView() ([]string, []rect) {
 			br, vert = "└─", " "
 		}
 		col, pr, edge := statusColor(a.Status), m.prs[a.PaneID], m.edgeColor(a)
-		l1 := fmt.Sprintf(" %s %s %s %s  %s  %s", c(edge, br), c(col, "⬢"), fit(a.Name, 16), c(col, fit(a.Status, 8)), c(245, a.Model), phaseLabel(a))
+		l1 := fmt.Sprintf(" %s %s %s %s %s  %s  %s", c(edge, br), tri(m.open[a.PaneID]), c(col, "⬢"), fit(a.Name, 16), c(col, fit(a.Status, 8)), c(245, a.Model), phaseLabel(a))
 		l2 := fmt.Sprintf(" %s     %s  %s  %s", c(edge, vert), c(110, a.Branch), ciGlyph(pr), m.beadTag(a))
-		hits = append(hits, rect{0, len(lines), m.w, len(lines) + 2, i})
+		hits = append(hits, rect{4, len(lines), 6, len(lines) + 1, i, true}, rect{0, len(lines), m.w, len(lines) + 2, i, false})
 		lines = append(lines, sel(l1, i == m.sel), sel(l2, i == m.sel))
+		if m.open[a.PaneID] {
+			lines = append(lines, indent(m.drawer(a, m.w-6), 5)...)
+		}
 	}
 	return lines, hits
 }
@@ -145,7 +163,7 @@ func (m model) fanView() ([]string, []rect) {
 			}
 			line := hub + spacer + c(ec, t) + text
 			if ai >= 0 {
-				hits = append(hits, rect{hubW + 2, len(lines), m.w, len(lines) + 1, ai})
+				hits = append(hits, rect{hubW + 2, len(lines), m.w, len(lines) + 1, ai, false})
 			}
 			lines = append(lines, line)
 		}
@@ -168,10 +186,16 @@ func (m model) gridView() ([]string, []rect) {
 	for i := 0; i < len(m.agents); i += cols {
 		block := make([][]string, 0, cols)
 		for j := i; j < min(i+cols, len(m.agents)); j++ {
+			x := (j - i) * (cw + 1)
 			block = append(block, m.card(m.agents[j], j == m.sel, cw, in))
-			hits = append(hits, rect{(j - i) * (cw + 1), len(lines), (j-i)*(cw+1) + cw, len(lines) + 6, j})
+			hits = append(hits, rect{x + cw - 4, len(lines), x + cw - 1, len(lines) + 1, j, true}, rect{x, len(lines), x + cw, len(lines) + 6, j, false})
 		}
 		lines = append(lines, joinCards(block)...)
+		for j := i; j < min(i+cols, len(m.agents)); j++ {
+			if m.open[m.agents[j].PaneID] {
+				lines = append(lines, m.drawer(m.agents[j], m.w-1)...)
+			}
+		}
 	}
 	return lines, hits
 }
@@ -204,7 +228,7 @@ func (m model) card(a Agent, on bool, cw, in int) []string {
 	if on {
 		title = " ▶ " + trunc(a.Repo, in-8) + " "
 	}
-	top := c(bc, tl+h) + c(111, title) + c(bc, strings.Repeat(h, max(in-1-vlen(title), 0))+tr)
+	top := c(bc, tl+h) + c(111, title) + c(bc, strings.Repeat(h, max(in-4-vlen(title), 0))+" ") + tri(m.open[a.PaneID]) + c(bc, " "+tr)
 	row := func(s string) string { return c(bc, v) + padTo(s, in) + c(bc, v) }
 	pr := m.prs[a.PaneID]
 	return []string{
@@ -220,14 +244,17 @@ func (m model) card(a Agent, on bool, cw, in int) []string {
 // ---- table: one dense line per agent ----
 
 func (m model) tableView() ([]string, []rect) {
-	lines := []string{c(240, " "+fit("", 2)+fit("AGENT", 16)+fit("STATUS", 9)+fit("PHASE", 22)+fit("MODEL", 16)+fit("REPO", 14)+fit("BRANCH", 36)+"PR / CI"), ""}
+	lines := []string{c(240, " "+fit("", 4)+fit("AGENT", 16)+fit("STATUS", 9)+fit("PHASE", 22)+fit("MODEL", 16)+fit("REPO", 14)+fit("BRANCH", 36)+"PR / CI"), ""}
 	var hits []rect
 	for i, a := range m.agents {
 		col := statusColor(a.Status)
-		l := fmt.Sprintf(" %s %s%s%s%s%s%s%s", c(col, "⬢"), fit(a.Name, 16), c(col, fit(a.Status, 9)),
+		l := fmt.Sprintf(" %s %s %s%s%s%s%s%s%s", tri(m.open[a.PaneID]), c(col, "⬢"), fit(a.Name, 16), c(col, fit(a.Status, 9)),
 			padTo(phaseLabel(a), 22), fit(a.Model, 16), fit(a.Repo, 14), c(110, fit(a.Branch, 36)), ciGlyph(m.prs[a.PaneID]))
-		hits = append(hits, rect{0, len(lines), m.w, len(lines) + 1, i})
+		hits = append(hits, rect{1, len(lines), 3, len(lines) + 1, i, true}, rect{0, len(lines), m.w, len(lines) + 1, i, false})
 		lines = append(lines, sel(l, i == m.sel))
+		if m.open[a.PaneID] {
+			lines = append(lines, indent(m.drawer(a, m.w-4), 3)...)
+		}
 	}
 	return lines, hits
 }
@@ -302,10 +329,14 @@ func (m model) graphView() ([]string, []rect) {
 				block := make([][]string, n)
 				for j := 0; j < n; j++ {
 					block[j] = m.card(m.agents[owners[j]], owners[j] == m.sel, cw, cw-2)
-					hits = append(hits, rect{left + j*(cw+1), len(lines), left + j*(cw+1) + cw, len(lines) + 6, owners[j]})
+					x := left + j*(cw+1)
+					hits = append(hits, rect{x + cw - 4, len(lines), x + cw - 1, len(lines) + 1, owners[j], true}, rect{x, len(lines), x + cw, len(lines) + 6, owners[j], false})
 				}
-				for _, l := range joinCards(block) {
-					lines = append(lines, strings.Repeat(" ", left)+l)
+				lines = append(lines, indent(joinCards(block), left)...)
+				for _, o := range owners[:n] {
+					if m.open[m.agents[o].PaneID] {
+						lines = append(lines, m.drawer(m.agents[o], m.w-1)...)
+					}
 				}
 			} else if ci == 0 {
 				pad := strings.Repeat(" ", max(xc-hubW/2, 0))
@@ -350,9 +381,15 @@ func (m model) graphView() ([]string, []rect) {
 			block := make([][]string, k)
 			for j, ai := range chunk {
 				block[j] = m.card(m.agents[ai], ai == m.sel, cw, cw-2)
-				hits = append(hits, rect{j * (cw + 1), len(lines), j*(cw+1) + cw, len(lines) + 6, ai})
+				x := j * (cw + 1)
+				hits = append(hits, rect{x + cw - 4, len(lines), x + cw - 1, len(lines) + 1, ai, true}, rect{x, len(lines), x + cw, len(lines) + 6, ai, false})
 			}
 			lines = append(lines, joinCards(block)...)
+			for _, ai := range chunk {
+				if m.open[m.agents[ai].PaneID] {
+					lines = append(lines, m.drawer(m.agents[ai], m.w-1)...)
+				}
+			}
 		}
 		lines = append(lines, "")
 		start = end

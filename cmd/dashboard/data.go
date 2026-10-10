@@ -14,6 +14,7 @@ type Agent struct {
 	WS                                       int  // workspace order
 	Primary                                  bool // lives in the repo's primary checkout, i.e. owns the linked worktrees
 	Branch, Model, Phase, Tool               string
+	Workspace, Tab, Title                    string
 	PR                                       PR
 }
 
@@ -44,6 +45,8 @@ func snapshot() ([]Agent, error) {
 					Status      string `json:"agent_status"`
 					Cwd         string `json:"cwd"`
 					WorkspaceID string `json:"workspace_id"`
+					TabID       string `json:"tab_id"`
+					Title       string `json:"terminal_title_stripped"`
 					Session     struct {
 						Value string `json:"value"`
 					} `json:"agent_session"`
@@ -83,7 +86,8 @@ func snapshot() ([]Agent, error) {
 			repo = "(no repo)"
 		}
 		as = append(as, Agent{Name: a.Name, PaneID: a.PaneID, Status: a.Status, Cwd: a.Cwd,
-			Session: a.Session.Value, Repo: repo, WS: w.n, Primary: w.primary})
+			Session: a.Session.Value, Repo: repo, WS: w.n, Primary: w.primary,
+			Workspace: a.WorkspaceID, Tab: a.TabID, Title: a.Title})
 	}
 	return as, nil
 }

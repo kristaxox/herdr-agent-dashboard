@@ -8,7 +8,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-type rect struct{ x0, y0, x1, y1, ai int }
+type rect struct {
+	x0, y0, x1, y1, ai int
+	tog                bool // the expand triangle, not the card
+}
 
 var modes = []string{"tree", "graph", "grid", "table", "fan"}
 
@@ -37,9 +40,13 @@ func (m model) vstep() int {
 // scroll keeps the selected agent fully in view
 func (m model) scroll(hits []rect) int {
 	avail, off := max(m.h-headH-footH, 1), 0
+	extra := 0 // keep the open drawer in view too, but never scroll the card itself off the top
+	if m.sel < len(m.agents) && m.open[m.agents[m.sel].PaneID] {
+		extra = len(m.drawer(m.agents[m.sel], m.w-1))
+	}
 	for _, h := range hits {
-		if h.ai == m.sel && h.y1 > off+avail {
-			off = h.y1 - avail
+		if h.ai == m.sel && !h.tog && h.y1+extra > off+avail {
+			off = min(h.y1+extra-avail, h.y0)
 		}
 	}
 	return off
@@ -89,7 +96,7 @@ func (m model) View() tea.View {
 		b.WriteString(lines[i] + "\n")
 	}
 	b.WriteString(strings.Repeat("\n", max(avail-(end-off), 0)))
-	b.WriteString(c(240, " ↑↓←→/hjkl move · enter/click jump · v/tab or 1-5 switch view · q close"))
+	b.WriteString(c(240, " ↑↓←→/hjkl move · enter/click jump · v/tab or 1-5 switch view · e/space expand · E all · q close"))
 	v := tea.NewView(b.String())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion

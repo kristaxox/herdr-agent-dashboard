@@ -4,7 +4,7 @@ import "testing"
 
 // smoke test: every view renders, with and without agents, and hits stay in range
 func TestRenderViews(t *testing.T) {
-	m := model{w: 120, h: 40, prs: map[string]PR{"p2": {547, "OPEN", "pass"}}}
+	m := model{w: 120, h: 40, prs: map[string]PR{"p2": {547, "OPEN", "pass"}}, open: map[string]bool{"p2": true, "p4": true}, details: map[string]Detail{"p2": {Checks: []Check{{"build", "pass"}, {"e2e", "fail"}}, PRTitle: "t", Said: "hi\n\nthere"}}}
 	for _, agents := range [][]Agent{
 		nil,
 		{

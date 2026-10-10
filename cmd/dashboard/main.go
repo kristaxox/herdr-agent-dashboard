@@ -24,12 +24,16 @@ type model struct {
 	prBusy bool
 	prAt   time.Time
 	mode   int
+	// expandable cards, keyed by pane id (maps are shared across model copies)
+	open     map[string]bool
+	details  map[string]Detail
+	inflight map[string]bool
 }
 
 const headH, footH = 2, 1
 
 func main() {
-	if _, err := tea.NewProgram(model{prs: map[string]PR{}}).Run(); err != nil {
+	if _, err := tea.NewProgram(model{prs: map[string]PR{}, open: map[string]bool{}, details: map[string]Detail{}, inflight: map[string]bool{}}).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -88,16 +92,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.w, m.h = msg.Width, msg.Height
 	case tickMsg:
 		return m, tea.Batch(snapCmd, tick())
+	case detailMsg:
+		m.details[msg.pane] = msg.d
+		delete(m.inflight, msg.pane)
 	case snapMsg:
 		if msg != nil {
 			m.agents = []Agent(msg)
 			m.sel = min(m.sel, max(len(m.agents)-1, 0))
 		}
+		cmds := m.detailCmds()
 		if !m.prBusy && time.Since(m.prAt) > 30*time.Second && len(m.agents) > 0 {
 			m.prBusy = true
 			as := m.agents
-			return m, func() tea.Msg { return prMsg(fetchPRs(as)) }
+			cmds = append(cmds, func() tea.Msg { return prMsg(fetchPRs(as)) })
 		}
+		return m, tea.Batch(cmds...)
 	case prMsg:
 		m.prs, m.prBusy, m.prAt = map[string]PR(msg), false, time.Now()
 	case tea.KeyPressMsg:
@@ -116,6 +125,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sel = min(m.sel+1, len(m.agents)-1)
 		case "h", "left":
 			m.sel = max(m.sel-1, 0)
+		case "e", "space", " ":
+			if m.sel < len(m.agents) {
+				m.toggle(m.agents[m.sel].PaneID)
+			}
+			return m, tea.Batch(m.detailCmds()...)
+		case "E":
+			all := false
+			for _, a := range m.agents {
+				all = all || !m.open[a.PaneID]
+			}
+			for _, a := range m.agents {
+				m.open[a.PaneID] = all
+			}
+			return m, tea.Batch(m.detailCmds()...)
 		case "enter":
 			return m, m.jump(m.sel)
 		}
@@ -124,10 +147,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if ms.Button == tea.MouseLeft {
 			_, hits := m.render()
 			y := ms.Y - headH + m.scroll(hits)
-			for _, h := range hits {
-				if y >= h.y0 && y < h.y1 && ms.X >= h.x0 && ms.X < h.x1 {
-					m.sel = h.ai
-					return m, m.jump(m.sel)
+			for _, tog := range []bool{true, false} { // triangles win over the card under them
+				for _, h := range hits {
+					if h.tog == tog && y >= h.y0 && y < h.y1 && ms.X >= h.x0 && ms.X < h.x1 {
+						m.sel = h.ai
+						if tog {
+							m.toggle(m.agents[h.ai].PaneID)
+							return m, tea.Batch(m.detailCmds()...)
+						}
+						return m, m.jump(m.sel)
+					}
 				}
 			}
 		}
@@ -197,4 +226,20 @@ func phaseLabel(a Agent) string {
 		s += " " + trunc(a.Tool, 14)
 	}
 	return c(p[0].(int), s)
+}
+
+func (m model) toggle(pane string) { m.open[pane] = !m.open[pane] }
+
+// detailCmds fetches details for expanded cards that have none or are stale.
+func (m model) detailCmds() []tea.Cmd {
+	var cmds []tea.Cmd
+	for _, a := range m.agents {
+		if d, ok := m.details[a.PaneID]; !m.open[a.PaneID] || m.inflight[a.PaneID] || (ok && time.Since(d.At) < 15*time.Second) {
+			continue
+		}
+		m.inflight[a.PaneID] = true
+		a := a
+		cmds = append(cmds, func() tea.Msg { return detailMsg{a.PaneID, fetchDetail(a)} })
+	}
+	return cmds
 }
