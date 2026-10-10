@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -40,15 +41,41 @@ type detailMsg struct {
 }
 
 func run(dir, name string, args ...string) string {
-	out, _ := runErr(dir, name, args...)
+	out, _ := runWith(dir, nil, name, args...)
 	return out
 }
 
-func runErr(dir, name string, args ...string) (string, error) {
+func runWith(dir string, env []string, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
+	if env != nil {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	out, err := cmd.Output()
 	return strings.TrimSpace(string(out)), err
+}
+
+// beadsEnv: bd finds its database through BEADS_DIR, which a plugin pane may not
+// inherit from the user's shell. Use the pane's value if set, else a file named
+// beads-dir in the plugin config dir, else the common global locations.
+func beadsEnv() []string {
+	if os.Getenv("BEADS_DIR") != "" {
+		return nil
+	}
+	home, _ := os.UserHomeDir()
+	var cands []string
+	if cfg := os.Getenv("HERDR_PLUGIN_CONFIG_DIR"); cfg != "" {
+		if b, err := os.ReadFile(cfg + "/beads-dir"); err == nil {
+			cands = append(cands, strings.TrimSpace(string(b)))
+		}
+	}
+	cands = append(cands, home+"/.beads/beadsDB", home+"/.beads")
+	for _, c := range cands {
+		if st, err := os.Stat(c); err == nil && st.IsDir() {
+			return []string{"BEADS_DIR=" + c}
+		}
+	}
+	return nil
 }
 
 func fetchDetail(a Agent) Detail {
@@ -64,13 +91,8 @@ func fetchDetail(a Agent) Detail {
 				ID, Title string
 			} `json:"dependencies"`
 		}
-		raw, err := runErr(a.Cwd, "bd", "show", a.Name, "--json")
-		if err != nil {
-			d.Notes = append(d.Notes, fmt.Sprintf("bd show %s failed: %v", a.Name, err))
-		} else if json.Unmarshal([]byte(raw), &bs) != nil || len(bs) == 0 {
-			d.Notes = append(d.Notes, fmt.Sprintf("bd show %s returned no bead (%s)", a.Name, trunc(raw, 60)))
-		}
-		if len(bs) > 0 {
+		raw, _ := runWith(a.Cwd, beadsEnv(), "bd", "show", a.Name, "--json")
+		if json.Unmarshal([]byte(raw), &bs) == nil && len(bs) > 0 {
 			b := bs[0]
 			d.BeadTitle, d.BeadStatus, d.BeadType, d.BeadPrio, d.BeadDesc = b.Title, b.Status, b.Type, b.Priority, strings.TrimSpace(b.Desc)
 			for _, x := range b.Deps {
@@ -274,9 +296,6 @@ func (m model) drawer(a Agent, w int) []string {
 		if d.Said != "" {
 			add("SAID", trunc(strings.Join(strings.Fields(d.Said), " "), 500))
 		}
-	}
-	if len(d.Notes) > 0 {
-		add("NOTES", c(205, strings.Join(d.Notes, "\n")))
 	}
 	add("HERDR", fmt.Sprintf("pane %s · workspace %s (%s) · tab %s\n%s\n%s", a.PaneID, a.Workspace, a.Repo, a.Tab, a.Title, a.Cwd))
 	title := " ▾ details · " + a.Name + " "
