@@ -103,7 +103,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "v", "tab":
 			m.mode = (m.mode + 1) % len(modes)
-		case "1", "2", "3", "4":
+		case "1", "2", "3", "4", "5":
 			m.mode = int(msg.String()[0] - '1')
 		case "j", "down":
 			m.sel = min(m.sel+m.vstep(), len(m.agents)-1)

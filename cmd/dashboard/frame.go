@@ -10,12 +10,14 @@ import (
 
 type rect struct{ x0, y0, x1, y1, ai int }
 
-var modes = []string{"tree", "graph", "grid", "table"}
+var modes = []string{"tree", "graph", "grid", "table", "fan"}
 
 func (m model) render() ([]string, []rect) {
 	switch modes[m.mode] {
 	case "graph":
 		return m.graphView()
+	case "fan":
+		return m.fanView()
 	case "grid":
 		return m.gridView()
 	case "table":
@@ -26,7 +28,7 @@ func (m model) render() ([]string, []rect) {
 
 // vstep: grid moves a whole card row on up/down, other views one agent
 func (m model) vstep() int {
-	if modes[m.mode] == "grid" {
+	if modes[m.mode] == "grid" || modes[m.mode] == "graph" {
 		return m.cols()
 	}
 	return 1
@@ -87,7 +89,7 @@ func (m model) View() tea.View {
 		b.WriteString(lines[i] + "\n")
 	}
 	b.WriteString(strings.Repeat("\n", max(avail-(end-off), 0)))
-	b.WriteString(c(240, " ↑↓←→/hjkl move · enter/click jump · v/tab or 1-4 switch view · q close"))
+	b.WriteString(c(240, " ↑↓←→/hjkl move · enter/click jump · v/tab or 1-5 switch view · q close"))
 	v := tea.NewView(b.String())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
