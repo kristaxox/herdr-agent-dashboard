@@ -14,10 +14,12 @@ type Detail struct {
 	At time.Time
 	// bead
 	BeadTitle, BeadStatus, BeadType string
+	BeadDesc                        string
 	BeadPrio                        int
 	BeadDeps                        []string
 	// pr
 	PRTitle, PRURL, Review, Mergeable string
+	PRNum                             int
 	Draft                             bool
 	Add, Del, Files                   int
 	Checks                            []Check
@@ -49,6 +51,7 @@ func fetchDetail(a Agent) Detail {
 	if beadRe.MatchString(a.Name) {
 		var bs []struct {
 			Title    string `json:"title"`
+			Desc     string `json:"description"`
 			Status   string `json:"status"`
 			Type     string `json:"issue_type"`
 			Priority int    `json:"priority"`
@@ -58,13 +61,14 @@ func fetchDetail(a Agent) Detail {
 		}
 		if json.Unmarshal([]byte(run(a.Cwd, "bd", "show", a.Name, "--json")), &bs) == nil && len(bs) > 0 {
 			b := bs[0]
-			d.BeadTitle, d.BeadStatus, d.BeadType, d.BeadPrio = b.Title, b.Status, b.Type, b.Priority
+			d.BeadTitle, d.BeadStatus, d.BeadType, d.BeadPrio, d.BeadDesc = b.Title, b.Status, b.Type, b.Priority, strings.TrimSpace(b.Desc)
 			for _, x := range b.Deps {
 				d.BeadDeps = append(d.BeadDeps, x.ID+" "+x.Title)
 			}
 		}
 	}
 	var pr struct {
+		Number                                int
 		Title, URL, ReviewDecision, Mergeable string
 		IsDraft                               bool
 		Additions, Deletions, ChangedFiles    int
@@ -74,6 +78,7 @@ func fetchDetail(a Agent) Detail {
 	}
 	if json.Unmarshal([]byte(run(a.Cwd, "gh", "pr", "view", "--json",
 		"title,url,isDraft,reviewDecision,mergeable,additions,deletions,changedFiles,statusCheckRollup")), &pr) == nil {
+		d.PRNum = pr.Number
 		d.PRTitle, d.PRURL, d.Review, d.Mergeable, d.Draft = pr.Title, pr.URL, pr.ReviewDecision, pr.Mergeable, pr.IsDraft
 		d.Add, d.Del, d.Files = pr.Additions, pr.Deletions, pr.ChangedFiles
 		for _, c := range pr.Checks {
@@ -225,13 +230,16 @@ func (m model) drawer(a Agent, w int) []string {
 				v += "\ndepends on " + dep
 			}
 			add("BEAD", v)
+			if d.BeadDesc != "" {
+				add("DESCRIPTION", d.BeadDesc)
+			}
 		}
 		if d.PRTitle != "" {
 			state := strings.ToLower(firstOf(d.Review, "no review yet"))
 			if d.Draft {
 				state = "draft · " + state
 			}
-			v := fmt.Sprintf("#%d  %s\n%s · +%d −%d in %d files · %s", m.prs[a.PaneID].Num, d.PRTitle,
+			v := fmt.Sprintf("#%d  %s\n%s · +%d −%d in %d files · %s", d.PRNum, d.PRTitle,
 				state, d.Add, d.Del, d.Files, strings.ToLower(d.Mergeable))
 			add("PR", v+"\n"+d.PRURL)
 			var cs []string
@@ -259,9 +267,13 @@ func (m model) drawer(a Agent, w int) []string {
 	add("HERDR", fmt.Sprintf("pane %s · workspace %s (%s) · tab %s\n%s\n%s", a.PaneID, a.Workspace, a.Repo, a.Tab, a.Title, a.Cwd))
 	title := " ▾ details · " + a.Name + " "
 	out := []string{c(214, "╭─"+title) + c(214, strings.Repeat("─", max(w-3-len([]rune(title)), 0))+"╮")}
-	const lw = 9
+	const lw, maxDesc = 12, 18
 	for _, r := range rows {
-		for i, l := range wrapRow(r[1], in-lw) {
+		ls := wrapRow(r[1], in-lw)
+		if r[0] == "DESCRIPTION" && len(ls) > maxDesc {
+			ls = append(ls[:maxDesc], c(240, fmt.Sprintf("… %d more lines (bd show %s)", len(ls)-maxDesc, a.Name)))
+		}
+		for i, l := range ls {
 			label := ""
 			if i == 0 {
 				label = c(110, r[0])
