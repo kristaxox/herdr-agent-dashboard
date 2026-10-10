@@ -82,6 +82,41 @@ Opening a card shows a full-width drawer under its row:
 - **SAID**: the agent's last message.
 - **HERDR**: pane, workspace and tab ids, terminal title, working directory.
 
+## The workflow this was built around
+
+The dashboard is not tied to one setup, but its defaults assume this one. If yours
+differs, see the [config](#configuration) notes at the end of this section.
+
+- **One orchestrator** agent runs in a repo's primary checkout (the main clone).
+- **One agent per unit of work.** For each task the orchestrator:
+  1. creates a bead with `bd create`, putting the full brief in the body;
+  2. creates a worktree and workspace with `herdr worktree create --branch <prefix>/<bead>-<slug>`;
+  3. starts a Claude agent in that pane with `herdr agent start <bead-id> --kind claude`,
+     so **the agent's name is the bead id**;
+  4. prompts the agent to read its bead and get on with it.
+- Each worker therefore has its own linked worktree, its own branch (the bead id is in
+  the branch name) and usually its own PR.
+- **Beads are the brief and the tracker, not the org chart.** They are not created with
+  `--parent` or grouped under an epic, and a plan bead is referenced from the text of the
+  beads that follow it. The occasional `discovered-from` dependency links a follow-up to
+  where it was found. Beads live in one global database, pointed at by `BEADS_DIR`.
+
+What that means for the dashboard:
+
+| In that setup | The dashboard |
+| --- | --- |
+| orchestrator in the primary checkout, workers in linked worktrees | draws the orchestrator above its workers (`owner_mode = "primary"`), since bd holds no ownership |
+| agent name = bead id | tags each card with its bead and loads its title, description and dependencies |
+| one global bead database | needs `BEADS_DIR` (or `beads_dir`), which a plugin pane does not inherit |
+| workers run long jobs behind monitors | shows `◉ monitoring` on agents that herdr reports as idle |
+
+If you do things differently:
+
+- Different agent naming: change `bead_pattern`, or set it to something that never
+  matches to hide bead fields.
+- No orchestrator or no worktrees: set `owner_mode = "none"` for a plain hub box per repo.
+- An agent that works several beads is only matched on the one in its name.
+
 ## Where each field comes from
 
 | Field | Source | Refresh |
