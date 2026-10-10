@@ -166,7 +166,7 @@ The open action creates a dedicated dashboard tab. Remove it with
 | Input | Does |
 | --- | --- |
 | click a card | select it and toggle its details drawer |
-| double-click a card, or `Enter` | jump to the agent's pane and close the dashboard |
+| double-click a card, or `Enter` | jump to the agent's pane (closes the dashboard only if `close_on_jump = true`) |
 | click the `▸`/`▾` triangle, or `e` / `Space` | toggle the selected card's drawer |
 | `E` | open all drawers, or close them all if all are open |
 | arrows / `hjkl` | move the selection (up/down move a whole card row in `graph` and `grid`) |
@@ -262,6 +262,8 @@ default.
 | `detail_refresh_seconds` | `15` | refresh for open drawers |
 | `double_click_ms` | `400` | double-click window |
 | `expand_on_click` | `true` | single click toggles the drawer; `false` = click only selects |
+| `close_on_jump` | `false` | `true` closes the dashboard after double-click/enter focuses an agent's pane; `false` leaves it open |
+| `animate` | `true` | cyan comet circling working cards, fast amber flash on blocked ones, slow green pulse on done ones; the ⬢ marker animates in every view |
 | `bead_pattern` | `'^[a-z]+-[a-z0-9]+$'` | which agent names are bead ids |
 | `beads_dir` | unset | `BEADS_DIR` for `bd`; a plugin pane does not inherit it from your shell |
 | `extra_path` | `~/.local/bin`, `~/go/bin`, `/opt/homebrew/bin`, `/usr/local/bin` | appended to `PATH` |

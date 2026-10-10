@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 // smoke test: every view renders, with and without agents, and hits stay in range
 func TestRenderViews(t *testing.T) {
@@ -23,5 +27,47 @@ func TestRenderViews(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// the comet is a contiguous run of border cells, the pulse recolours the border, neither changes card size
+func TestCardAnimation(t *testing.T) {
+	cw := 40
+	work, blocked := Agent{Name: "a", Status: "working", Repo: "r"}, Agent{Name: "b", Status: "blocked", Repo: "r"}
+	m := model{prs: map[string]PR{}, open: map[string]bool{}}
+	for f := 0; f < 2*cw+8; f++ {
+		m.frame = f
+		card := m.card(work, false, cw, cw-2)
+		if len(card) != 6 {
+			t.Fatalf("frame %d: %d rows", f, len(card))
+		}
+		for _, l := range card {
+			if vlen(l) != cw {
+				t.Fatalf("frame %d: row width %d, want %d", f, vlen(l), cw)
+			}
+		}
+		joined := strings.Join(card, "")
+		seen := false // the head hides while it passes under the title, so any comet colour will do
+		for _, code := range comet {
+			seen = seen || strings.Contains(joined, fmt.Sprintf("\x1b[38;5;%dm", code))
+		}
+		if !seen {
+			t.Fatalf("frame %d: no comet cells", f)
+		}
+	}
+	m.frame = 0
+	a := m.card(blocked, false, cw, cw-2)
+	m.frame = 6
+	b := m.card(blocked, false, cw, cw-2)
+	if strings.Join(a, "") == strings.Join(b, "") {
+		t.Error("blocked card does not pulse")
+	}
+	done := Agent{Name: "c", Status: "done", Repo: "r"}
+	m.frame = 0
+	a = m.card(done, false, cw, cw-2)
+	m.frame = 18
+	b = m.card(done, false, cw, cw-2)
+	if strings.Join(a, "") == strings.Join(b, "") {
+		t.Error("done card does not pulse")
 	}
 }

@@ -64,7 +64,7 @@ func (m model) treeView() ([]string, []rect) {
 			br, vert = "└─", " "
 		}
 		col, pr, edge := statusColor(a.Status), m.prs[a.PaneID], m.edgeColor(a)
-		l1 := fmt.Sprintf(" %s %s %s %s %s  %s  %s", c(edge, br), tri(m.open[a.PaneID]), c(col, "⬢"), fit(a.Name, 16), c(col, fit(a.Status, 8)), c(245, a.Model), phaseLabel(a))
+		l1 := fmt.Sprintf(" %s %s %s %s %s  %s  %s", c(edge, br), tri(m.open[a.PaneID]), m.dot(a), fit(a.Name, 16), c(col, fit(a.Status, 8)), c(245, a.Model), phaseLabel(a))
 		l2 := fmt.Sprintf(" %s     %s  %s  %s", c(edge, vert), c(110, a.Branch), ciGlyph(pr), m.beadTag(a))
 		hits = append(hits, rect{4, len(lines), 6, len(lines) + 1, i, true}, rect{0, len(lines), m.w, len(lines) + 2, i, false})
 		lines = append(lines, sel(l1, i == m.sel), sel(l2, i == m.sel))
@@ -152,7 +152,7 @@ func (m model) fanView() ([]string, []rect) {
 				a := grp[(r-off)/2]
 				col := statusColor(a.Status)
 				if agentRow {
-					text = fmt.Sprintf("%s─ %s %s %s  %s  %s", c(ec, "─"), c(col, "⬢"), fit(a.Name, 16), c(col, fit(a.Status, 8)), c(245, a.Model), phaseLabel(a))
+					text = fmt.Sprintf("%s─ %s %s %s  %s  %s", c(ec, "─"), m.dot(a), fit(a.Name, 16), c(col, fit(a.Status, 8)), c(245, a.Model), phaseLabel(a))
 				} else {
 					text = fmt.Sprintf("   %s  %s  %s", c(110, a.Branch), ciGlyph(m.prs[a.PaneID]), m.beadTag(a))
 				}
@@ -214,30 +214,111 @@ func joinCards(block [][]string) []string {
 	return out
 }
 
+// comet is the head-to-tail colour ramp of the working animation (256-colour cyan -> blue).
+var comet = [...]int{51, 45, 39, 33, 27, 25}
+
+// alarm is the blocked ramp: dark to bright amber to near-white, one step per frame (~0.5s).
+var alarm = [...]int{236, 94, 172, 214, 226, 231, 226, 214, 172, 94}
+
+// calm is the done ramp: slow green swell, 6 frames a step (~4s). Tops out at 34
+// (0,175,0), the 256-colour step nearest 75% of full green.
+var calm = [...]int{22, 22, 28, 34, 34, 28, 22, 22}
+
+// pulseColor is the colour of a blocked or done agent's pulse at a frame.
+func pulseColor(status string, frame int) (int, bool) {
+	switch status {
+	case "blocked":
+		return alarm[frame%len(alarm)], true
+	case "done":
+		return calm[frame/6%len(calm)], true
+	}
+	return 0, false
+}
+
+// borderColor colours border cell p of a ring of n cells at the given frame.
+// Working cards get a comet circling clockwise over the base colour, blocked
+// blocked cards flash amber, done cards swell green, everything else keeps the base.
+func borderColor(a Agent, base, p, n, frame int) int {
+	if !cfg.Animate {
+		if a.Status == "working" || a.Status == "blocked" {
+			return statusColor(a.Status)
+		}
+		return base
+	}
+	switch a.Status {
+	case "blocked", "done":
+		col, _ := pulseColor(a.Status, frame)
+		return col
+	case "working":
+		if d := ((frame-p)%n + n) % n; d < len(comet) {
+			return comet[d]
+		}
+	}
+	return base
+}
+
+// dot is the agent's hexagon: working sweeps the comet ramp back and forth, blocked flashes amber, done swells green.
+func (m model) dot(a Agent) string {
+	col := statusColor(a.Status)
+	if cfg.Animate {
+		switch a.Status {
+		case "blocked", "done":
+			col, _ = pulseColor(a.Status, m.frame)
+		case "working":
+			i := m.frame / 2 % (2*len(comet) - 2)
+			if i >= len(comet) {
+				i = 2*len(comet) - 2 - i
+			}
+			col = comet[i]
+		}
+	}
+	return c(col, "⬢")
+}
+
 func (m model) card(a Agent, on bool, cw, in int) []string {
 	col := statusColor(a.Status)
 	bc := 240
-	if a.Status == "working" || a.Status == "blocked" {
-		bc = col
-	}
 	tl, tr, bl, br, h, v := "╭", "╮", "╰", "╯", "─", "│"
 	if on {
 		tl, tr, bl, br, h, v, bc = "╔", "╗", "╚", "╝", "═", "║", 255
 	}
+	// the border is a ring of n cells: top left->right, right side down,
+	// bottom right->left, left side up. bd(p) is the colour of ring cell p.
+	rows := 6
+	n := 2*cw + 2*(rows-2)
+	bd := func(p int) int { return borderColor(a, bc, p, n, m.frame) }
+	bc1 := func(p int, s string) string { return c(bd(p), s) }
 	title := " " + trunc(a.Repo, in-6) + " "
 	if on {
 		title = " ▶ " + trunc(a.Repo, in-8) + " "
 	}
-	top := c(bc, tl+h) + c(111, title) + c(bc, strings.Repeat(h, max(in-4-vlen(title), 0))+" ") + tri(m.open[a.PaneID]) + c(bc, " "+tr)
-	row := func(s string) string { return c(bc, v) + padTo(s, in) + c(bc, v) }
+	top := bc1(0, tl) + bc1(1, h) + c(111, title)
+	for x := 2 + vlen(title); x < cw-4; x++ {
+		top += bc1(x, h)
+	}
+	top += bc1(cw-4, " ") + tri(m.open[a.PaneID]) + bc1(cw-2, " ") + bc1(cw-1, tr)
+	row := func(r int, s string) string {
+		return bc1(n-r, v) + padTo(s, in) + bc1(cw-1+r, v) // left side runs up: r=4 -> 2cw+4 .. r=1 -> 2cw+7
+	}
+	bottom := ""
+	for x := 0; x < cw; x++ {
+		s := h
+		switch x {
+		case 0:
+			s = bl
+		case cw - 1:
+			s = br
+		}
+		bottom += bc1(cw+4+(cw-1-x), s)
+	}
 	pr := m.prs[a.PaneID]
 	return []string{
 		top,
-		row(fmt.Sprintf(" %s %s %s", c(col, "⬢"), fit(a.Name, in-14), c(col, fit(a.Status, 9)))),
-		row(" " + c(245, a.Model) + "  " + phaseLabel(a)),
-		row(" " + c(110, trunc(a.Branch, in-2))),
-		row(" " + ciGlyph(pr) + "  " + m.beadTag(a)),
-		c(bc, bl+strings.Repeat(h, in)+br),
+		row(1, fmt.Sprintf(" %s %s %s", m.dot(a), fit(a.Name, in-14), c(col, fit(a.Status, 9)))),
+		row(2, " "+c(245, a.Model)+"  "+phaseLabel(a)),
+		row(3, " "+c(110, trunc(a.Branch, in-2))),
+		row(4, " "+ciGlyph(pr)+"  "+m.beadTag(a)),
+		bottom,
 	}
 }
 
@@ -248,7 +329,7 @@ func (m model) tableView() ([]string, []rect) {
 	var hits []rect
 	for i, a := range m.agents {
 		col := statusColor(a.Status)
-		l := fmt.Sprintf(" %s %s %s%s%s%s%s%s%s", tri(m.open[a.PaneID]), c(col, "⬢"), fit(a.Name, 16), c(col, fit(a.Status, 9)),
+		l := fmt.Sprintf(" %s %s %s%s%s%s%s%s%s", tri(m.open[a.PaneID]), m.dot(a), fit(a.Name, 16), c(col, fit(a.Status, 9)),
 			padTo(phaseLabel(a), 22), fit(a.Model, 16), fit(a.Repo, 14), c(110, fit(a.Branch, 36)), ciGlyph(m.prs[a.PaneID]))
 		hits = append(hits, rect{1, len(lines), 3, len(lines) + 1, i, true}, rect{0, len(lines), m.w, len(lines) + 1, i, false})
 		lines = append(lines, sel(l, i == m.sel))

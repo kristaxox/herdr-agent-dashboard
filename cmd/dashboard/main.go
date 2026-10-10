@@ -12,6 +12,7 @@ import (
 )
 
 type tickMsg struct{}
+type animMsg struct{}
 type snapMsg []Agent
 type prMsg map[string]PR
 
@@ -23,6 +24,7 @@ type model struct {
 	prBusy bool
 	prAt   time.Time
 	mode   int
+	frame  int // animation frame, bumped by animMsg
 	// expandable cards, keyed by pane id (maps are shared across model copies)
 	open     map[string]bool
 	details  map[string]Detail
@@ -93,7 +95,11 @@ func tick() tea.Cmd {
 	return tea.Tick(sec(cfg.PollSeconds), func(time.Time) tea.Msg { return tickMsg{} })
 }
 
-func (m model) Init() tea.Cmd { return tea.Batch(snapCmd, tick()) }
+func animTick() tea.Cmd {
+	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return animMsg{} })
+}
+
+func (m model) Init() tea.Cmd { return tea.Batch(snapCmd, tick(), animTick()) }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -101,6 +107,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.w, m.h = msg.Width, msg.Height
 	case tickMsg:
 		return m, tea.Batch(snapCmd, tick())
+	case animMsg:
+		m.frame++
+		return m, animTick() // ponytail: ticks even when nothing animates; stop it if idle CPU matters
 	case detailMsg:
 		m.details[msg.pane] = msg.d
 		delete(m.inflight, msg.pane)
@@ -184,7 +193,10 @@ func (m model) jump(i int) tea.Cmd {
 	pane := m.agents[i].PaneID
 	return func() tea.Msg {
 		exec.Command(herdrBin(), "agent", "focus", pane).Run()
-		return tea.Quit()
+		if cfg.CloseOnJump {
+			return tea.Quit()
+		}
+		return nil
 	}
 }
 
