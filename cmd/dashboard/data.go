@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Agent struct {
@@ -14,6 +16,7 @@ type Agent struct {
 	WS                                       int  // workspace order
 	Primary                                  bool // lives in the repo's primary checkout, i.e. owns the linked worktrees
 	Branch, Model, Phase, Tool               string
+	Monitors                                 int // live Monitor tasks, from the session log
 	Workspace, Tab, Title                    string
 	PR                                       PR
 }
@@ -100,8 +103,11 @@ func enrichFast(a *Agent) {
 	buf := sessionTail(a.Cwd, a.Session)
 	a.Model = lastModel(buf)
 	a.Phase, a.Tool = "", ""
+	a.Monitors = countMonitors(buf, time.Now())
 	if a.Status == "working" {
 		a.Phase, a.Tool = lastPhase(buf)
+	} else if a.Monitors > 0 {
+		a.Phase = "monitoring" // idle in herdr's eyes, but waiting on a monitor
 	}
 }
 
@@ -120,7 +126,7 @@ func sessionTail(cwd, session string) []byte {
 	}
 	defer f.Close()
 	st, _ := f.Stat()
-	const tail = 256 << 10 // ponytail: last 256KB only, widen if a model line is ever missed
+	const tail = 1 << 20 // ponytail: last 1MB only (monitors live up to ~30m); widen if a model/monitor line is ever missed
 	off := max(st.Size()-tail, 0)
 	buf := make([]byte, st.Size()-off)
 	f.ReadAt(buf, off)
@@ -238,4 +244,46 @@ func collapseCI(cs [][2]string) string {
 		return "pending"
 	}
 	return "pass"
+}
+
+var (
+	monStartRe = regexp.MustCompile(`"content":"Monitor started \(task (\w+), expires in (\d+)m`) // anchored: output quoted elsewhere in a log must not match
+	tsRe       = regexp.MustCompile(`"timestamp":"([^"]+)"`)
+	taskIDRe   = regexp.MustCompile(`<task-id>(\w+)</task-id>`)
+)
+
+// countMonitors counts Monitor tasks that have started, haven't hit their expiry
+// and haven't reported a final <status> notification. Monitor *events* carry no
+// <status>, so they don't end a task.
+func countMonitors(buf []byte, now time.Time) int {
+	type mon struct{ until time.Time }
+	started := map[string]mon{}
+	ended := map[string]bool{}
+	for _, l := range strings.Split(string(buf), "\n") {
+		switch {
+		case strings.Contains(l, `"content":"Monitor started (`):
+			m, t := monStartRe.FindStringSubmatch(l), tsRe.FindStringSubmatch(l)
+			if m == nil || t == nil {
+				continue
+			}
+			ts, err := time.Parse(time.RFC3339, t[1])
+			if err != nil {
+				continue
+			}
+			mins := 0
+			fmt.Sscanf(m[2], "%d", &mins)
+			started[m[1]] = mon{ts.Add(time.Duration(mins) * time.Minute)}
+		case strings.Contains(l, `"content":"<task-notification>`) && strings.Contains(l, "<status>"):
+			if m := taskIDRe.FindStringSubmatch(l); m != nil {
+				ended[m[1]] = true
+			}
+		}
+	}
+	n := 0
+	for id, m := range started {
+		if !ended[id] && now.Before(m.until) {
+			n++
+		}
+	}
+	return n
 }

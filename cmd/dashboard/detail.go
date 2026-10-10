@@ -27,11 +27,11 @@ type Detail struct {
 	Dirty, Ahead, Behind int
 	Commit, CommitAge    string
 	// session
-	Ctx      int // tokens in context on the last turn
-	LastAt   time.Time
-	Tools    []string // newest last
-	Said     string
-	Sessions int
+	Ctx    int // tokens in context on the last turn
+	LastAt time.Time
+	Tools  []string // newest last
+	Said   string
+	Notes  []string // lookups that failed, shown in the drawer instead of hiding them
 }
 
 type detailMsg struct {
@@ -40,10 +40,15 @@ type detailMsg struct {
 }
 
 func run(dir, name string, args ...string) string {
+	out, _ := runErr(dir, name, args...)
+	return out
+}
+
+func runErr(dir, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
-	out, _ := cmd.Output()
-	return strings.TrimSpace(string(out))
+	out, err := cmd.Output()
+	return strings.TrimSpace(string(out)), err
 }
 
 func fetchDetail(a Agent) Detail {
@@ -59,7 +64,13 @@ func fetchDetail(a Agent) Detail {
 				ID, Title string
 			} `json:"dependencies"`
 		}
-		if json.Unmarshal([]byte(run(a.Cwd, "bd", "show", a.Name, "--json")), &bs) == nil && len(bs) > 0 {
+		raw, err := runErr(a.Cwd, "bd", "show", a.Name, "--json")
+		if err != nil {
+			d.Notes = append(d.Notes, fmt.Sprintf("bd show %s failed: %v", a.Name, err))
+		} else if json.Unmarshal([]byte(raw), &bs) != nil || len(bs) == 0 {
+			d.Notes = append(d.Notes, fmt.Sprintf("bd show %s returned no bead (%s)", a.Name, trunc(raw, 60)))
+		}
+		if len(bs) > 0 {
 			b := bs[0]
 			d.BeadTitle, d.BeadStatus, d.BeadType, d.BeadPrio, d.BeadDesc = b.Title, b.Status, b.Type, b.Priority, strings.TrimSpace(b.Desc)
 			for _, x := range b.Deps {
@@ -263,6 +274,9 @@ func (m model) drawer(a Agent, w int) []string {
 		if d.Said != "" {
 			add("SAID", trunc(strings.Join(strings.Fields(d.Said), " "), 500))
 		}
+	}
+	if len(d.Notes) > 0 {
+		add("NOTES", c(205, strings.Join(d.Notes, "\n")))
 	}
 	add("HERDR", fmt.Sprintf("pane %s · workspace %s (%s) · tab %s\n%s\n%s", a.PaneID, a.Workspace, a.Repo, a.Tab, a.Title, a.Cwd))
 	title := " ▾ details · " + a.Name + " "

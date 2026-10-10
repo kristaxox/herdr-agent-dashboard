@@ -36,6 +36,9 @@ type model struct {
 const headH, footH = 2, 1
 
 func main() {
+	// plugin panes can inherit a thin PATH; make sure bd, gh and git are findable
+	home, _ := os.UserHomeDir()
+	os.Setenv("PATH", os.Getenv("PATH")+":"+home+"/.local/bin:"+home+"/go/bin:/opt/homebrew/bin:/usr/local/bin")
 	if _, err := tea.NewProgram(model{prs: map[string]PR{}, open: map[string]bool{}, details: map[string]Detail{}, inflight: map[string]bool{}}).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -229,6 +232,13 @@ func phaseLabel(a Agent) string {
 	s := p[1].(string)
 	if a.Tool != "" {
 		s += " " + trunc(a.Tool, 14)
+	}
+	if a.Monitors > 0 {
+		if a.Phase == "monitoring" {
+			s += fmt.Sprintf(" ×%d", a.Monitors)
+		} else {
+			s += fmt.Sprintf(" +◉%d", a.Monitors) // busy, and monitors are also running
+		}
 	}
 	return c(p[0].(int), s)
 }
