@@ -11,7 +11,7 @@ import (
 )
 
 // Config is read from config.toml in the plugin's config directory
-// (HERDR_PLUGIN_CONFIG_DIR, or $CLAUDE_DASHBOARD_CONFIG for a one-off path).
+// (HERDR_PLUGIN_CONFIG_DIR, or $AGENT_DASHBOARD_CONFIG for a one-off path).
 // Every key is optional; see config.example.toml.
 type Config struct {
 	DefaultView    string   `toml:"default_view"` // tree | graph | grid | table | fan
@@ -74,7 +74,7 @@ func loadConfig(path string) {
 }
 
 func configPath() string {
-	if p := os.Getenv("CLAUDE_DASHBOARD_CONFIG"); p != "" {
+	if p := os.Getenv("AGENT_DASHBOARD_CONFIG"); p != "" {
 		return p
 	}
 	if d := os.Getenv("HERDR_PLUGIN_CONFIG_DIR"); d != "" {

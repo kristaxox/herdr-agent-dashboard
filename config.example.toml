@@ -1,5 +1,5 @@
 # Copy to <plugin config dir>/config.toml. Find the directory with:
-#   herdr plugin config-dir kristaxox.claude-dashboard
+#   herdr plugin config-dir kristaxox.agent-dashboard
 # Every key is optional; the values below are the defaults.
 
 default_view = "graph"           # tree | graph | grid | table | fan

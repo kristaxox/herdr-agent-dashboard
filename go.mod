@@ -1,4 +1,4 @@
-module github.com/kristaxox/herdr-claude-dashboard
+module github.com/kristaxox/herdr-agent-dashboard
 
 go 1.26.0
 

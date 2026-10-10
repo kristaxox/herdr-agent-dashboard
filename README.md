@@ -1,4 +1,4 @@
-# herdr-claude-dashboard
+# herdr-agent-dashboard
 
 A full-tab dashboard for the Claude Code agents running in [Herdr](https://herdr.dev).
 It draws your agents as a topology: each repo's primary-checkout agent (for example an
@@ -7,7 +7,15 @@ agent. Each card shows status, what the agent is doing right now, model, git bra
 PR and CI state, and its bead. Click a card to open a verbose details drawer;
 double-click to jump to that agent's pane.
 
-> Status: early. Claude Code agents only. macOS and Linux.
+> Status: early. macOS and Linux.
+
+> **Claude Code only, for now.** Model, activity phase, live monitors, context size, the
+> recent-tools list and the agent's last message are all read from Claude Code's session
+> logs (`~/.claude/projects/...`). Other agents Herdr knows about should still appear with
+> Herdr's status, branch and PR / CI, but none of the log-derived fields. That has not been
+> tested. Support for another agent means a reader for its session format; see
+> [Limitations](#limitations-and-ideas).
+
 
 ## Views
 
@@ -46,12 +54,12 @@ Optional: [`gh`](https://cli.github.com) for PR and CI, [`bd`](https://github.co
 for bead titles and descriptions. Anything missing just leaves that field blank.
 
 ```sh
-herdr plugin install kristaxox/herdr-claude-dashboard
-herdr plugin action invoke kristaxox.claude-dashboard.open
+herdr plugin install kristaxox/herdr-agent-dashboard
+herdr plugin action invoke kristaxox.agent-dashboard.open
 ```
 
 The open action creates a dedicated dashboard tab. Remove it with
-`herdr plugin uninstall kristaxox.claude-dashboard`.
+`herdr plugin uninstall kristaxox.agent-dashboard`.
 
 ## Using it
 
@@ -137,11 +145,11 @@ Closed cards cost nothing beyond the cheap per-poll fields.
 Optional. Create `config.toml` in the plugin config directory:
 
 ```sh
-herdr plugin config-dir kristaxox.claude-dashboard
+herdr plugin config-dir kristaxox.agent-dashboard
 ```
 
 [`config.example.toml`](config.example.toml) lists every key with its default. Set
-`CLAUDE_DASHBOARD_CONFIG` to read a config from another path. A missing or unreadable
+`AGENT_DASHBOARD_CONFIG` to read a config from another path. A missing or unreadable
 file leaves the defaults; an invalid `bead_pattern` or `default_view` falls back to the
 default.
 

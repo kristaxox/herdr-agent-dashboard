@@ -84,7 +84,7 @@ func (m model) View() tea.View {
 			fail++
 		}
 	}
-	fmt.Fprintf(&b, " %s  %s   %s   %s   %s\n\n", c(111, "HERDR CLAUDE DASHBOARD"),
+	fmt.Fprintf(&b, " %s  %s   %s   %s   %s\n\n", c(111, "HERDR AGENT DASHBOARD"),
 		c(208, fmt.Sprintf("ACTIVE %d/%d", work, len(m.agents))),
 		c(205, fmt.Sprintf("BLOCKED %d", blocked)), c(205, fmt.Sprintf("CI FAIL %d", fail)),
 		c(240, "view: "+modes[m.mode]))
