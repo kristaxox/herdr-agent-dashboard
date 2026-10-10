@@ -8,7 +8,7 @@ func TestRenderViews(t *testing.T) {
 	for _, agents := range [][]Agent{
 		nil,
 		{
-			{Name: "orchestrator", PaneID: "p1", Status: "idle", Repo: "demo"},
+			{Name: "orchestrator", PaneID: "p1", Status: "idle", Repo: "demo", Primary: true},
 			{Name: "abc-123", PaneID: "p2", Status: "working", Repo: "demo", Phase: "writing", Tool: "Edit"},
 			{Name: "solo", PaneID: "p4", Status: "done", Repo: "other"},
 		},

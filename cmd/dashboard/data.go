@@ -11,7 +11,8 @@ import (
 
 type Agent struct {
 	Name, PaneID, Status, Cwd, Session, Repo string
-	WS                                       int // workspace order
+	WS                                       int  // workspace order
+	Primary                                  bool // lives in the repo's primary checkout, i.e. owns the linked worktrees
 	Branch, Model, Phase, Tool               string
 	PR                                       PR
 }
@@ -52,6 +53,7 @@ func snapshot() ([]Agent, error) {
 					Number   int    `json:"number"`
 					Worktree *struct {
 						RepoName string `json:"repo_name"`
+						Linked   bool   `json:"is_linked_worktree"`
 					} `json:"worktree"`
 				} `json:"workspaces"`
 			} `json:"snapshot"`
@@ -61,16 +63,17 @@ func snapshot() ([]Agent, error) {
 		return nil, err
 	}
 	type wsInfo struct {
-		n    int
-		repo string
+		n       int
+		repo    string
+		primary bool
 	}
 	ws := map[string]wsInfo{}
 	for _, w := range r.Result.Snapshot.Workspaces {
-		repo := ""
+		repo, primary := "", false
 		if w.Worktree != nil {
-			repo = w.Worktree.RepoName
+			repo, primary = w.Worktree.RepoName, !w.Worktree.Linked
 		}
-		ws[w.ID] = wsInfo{w.Number, repo}
+		ws[w.ID] = wsInfo{w.Number, repo, primary}
 	}
 	var as []Agent
 	for _, a := range r.Result.Snapshot.Agents {
@@ -80,7 +83,7 @@ func snapshot() ([]Agent, error) {
 			repo = "(no repo)"
 		}
 		as = append(as, Agent{Name: a.Name, PaneID: a.PaneID, Status: a.Status, Cwd: a.Cwd,
-			Session: a.Session.Value, Repo: repo, WS: w.n})
+			Session: a.Session.Value, Repo: repo, WS: w.n, Primary: w.primary})
 	}
 	return as, nil
 }

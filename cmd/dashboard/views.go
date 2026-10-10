@@ -265,24 +265,52 @@ func (m model) graphView() ([]string, []rect) {
 		for end < len(m.agents) && m.agents[end].Repo == m.agents[start].Repo {
 			end++
 		}
-		grp := m.agents[start:end]
+		// owners (primary checkout) sit on top; linked-worktree agents hang below.
+		// No owner or no workers: fall back to a hub box over everyone.
+		var owners, kids []int
+		for i := start; i < end; i++ {
+			if m.agents[i].Primary {
+				owners = append(owners, i)
+			} else {
+				kids = append(kids, i)
+			}
+		}
+		useOwner := len(owners) > 0 && len(kids) > 0
+		if !useOwner {
+			owners, kids = nil, nil
+			for i := start; i < end; i++ {
+				kids = append(kids, i)
+			}
+		}
 		ec := 240
-		for _, a := range grp {
-			if m.edgeColor(a) == 205 {
+		for _, i := range kids {
+			if m.edgeColor(m.agents[i]) == 205 {
 				ec = 205
 			}
 		}
-		for ci := 0; ci < len(grp); ci += cols {
-			chunk := grp[ci:min(ci+cols, len(grp))]
+		for ci := 0; ci < len(kids); ci += cols {
+			chunk := kids[ci:min(ci+cols, len(kids))]
 			k := len(chunk)
 			xs := make([]int, k)
 			for j := range xs {
 				xs[j] = j*(cw+1) + cw/2
 			}
 			xc := (xs[0] + xs[k-1]) / 2
-			if ci == 0 {
+			if ci == 0 && useOwner {
+				n := min(len(owners), cols)
+				left := max(xc-(n*(cw+1)-1)/2, 0)
+				block := make([][]string, n)
+				for j := 0; j < n; j++ {
+					block[j] = m.card(m.agents[owners[j]], owners[j] == m.sel, cw, cw-2)
+					hits = append(hits, rect{left + j*(cw+1), len(lines), left + j*(cw+1) + cw, len(lines) + 6, owners[j]})
+				}
+				for _, l := range joinCards(block) {
+					lines = append(lines, strings.Repeat(" ", left)+l)
+				}
+			} else if ci == 0 {
 				pad := strings.Repeat(" ", max(xc-hubW/2, 0))
-				body := padTo(c(111, "◉ "+trunc(grp[0].Repo, hubW-10))+c(240, fmt.Sprintf(" %d", len(grp))), hubW-4)
+				repo := m.agents[start].Repo
+				body := padTo(c(111, "◉ "+trunc(repo, hubW-10))+c(240, fmt.Sprintf(" %d", end-start)), hubW-4)
 				lines = append(lines,
 					pad+c(111, "╭"+strings.Repeat("─", hubW-2)+"╮"),
 					pad+c(111, "│ ")+body+c(111, " │"),
@@ -316,13 +344,12 @@ func (m model) graphView() ([]string, []rect) {
 			}
 			drops := map[int]cell{}
 			for j, x := range xs {
-				drops[x] = cell{'│', m.edgeColor(chunk[j])}
+				drops[x] = cell{'│', m.edgeColor(m.agents[chunk[j]])}
 			}
 			lines = append(lines, rowStr(drops))
 			block := make([][]string, k)
-			for j, a := range chunk {
-				ai := start + ci + j
-				block[j] = m.card(a, ai == m.sel, cw, cw-2)
+			for j, ai := range chunk {
+				block[j] = m.card(m.agents[ai], ai == m.sel, cw, cw-2)
 				hits = append(hits, rect{j * (cw + 1), len(lines), j*(cw+1) + cw, len(lines) + 6, ai})
 			}
 			lines = append(lines, joinCards(block)...)

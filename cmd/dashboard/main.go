@@ -55,6 +55,9 @@ func snapCmd() tea.Msg {
 		if a.Repo != b.Repo {
 			return a.Repo < b.Repo
 		}
+		if a.Primary != b.Primary {
+			return a.Primary // owners first within a repo
+		}
 		if ra, rb := rank(a.Status), rank(b.Status); ra != rb {
 			return ra < rb
 		}
