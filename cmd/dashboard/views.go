@@ -157,7 +157,7 @@ func (m model) fanView() ([]string, []rect) {
 					text = fmt.Sprintf("   %s  %s  %s", c(110, a.Branch), ciGlyph(m.prs[a.PaneID]), m.beadTag(a))
 				}
 				if !agentRow {
-					t = trunk(r < lastRow, r < lastRow, false, false)
+					t = trunk(r < lastRow, r < lastRow, false, left) // the hub may land on a detail line
 				}
 				text = sel(text, ai == m.sel)
 			}

@@ -16,7 +16,6 @@ double-click to jump to that agent's pane.
 > tested. Support for another agent means a reader for its session format; see
 > [Limitations](#limitations-and-ideas).
 
-
 ## Views
 
 Switch with `v` / `Tab`, or press `1`-`5`.
@@ -29,23 +28,124 @@ Switch with `v` / `Tab`, or press `1`-`5`.
 | `4` | `table` | One dense line per agent. |
 | `5` | `fan` | The original left-to-right layout: repo hub fanning out to nodes. |
 
+Each mock below is rendered by the real code from demo data in a 96-column terminal (`card_min_width = 30`). `▸` is the expand triangle, `◉ monitoring ×1` is an agent herdr reports as idle but with a live monitor, and `#9 ●` is a PR whose CI is still running.
+
+### 1. tree
+
+A repo header with its agents hanging below. The densest view that still shows branch, PR and bead.
+
 ```
-              ╭─ demo ─────────────────── ▸ ╮
-              │ ⬢ orchestrator   idle       │
-              │ main                        │
-              ╰─────────────────────────────╯
-                            │
-        ╭───────────────────┴───────────────────╮
-        │                                       │
-╭─ demo ───────────── ▸ ╮               ╭─ demo ───────────── ▾ ╮
-│ ⬢ abc-123   working   │               │ ⬢ abc-456   blocked   │
-│ opus-5-5  ✎ writing   │               │ sonnet-5-5            │
-│ feat/abc-123          │               │ feat/abc-456          │
-│ #5 ✓  bead abc-123    │               │ #7 ✗  bead abc-456    │
-╰───────────────────────╯               ╰───────────────────────╯
+ HERDR AGENT DASHBOARD  ACTIVE 1/5   BLOCKED 1   CI FAIL 1   view: tree
+
+
+◉ demo  4 agents
+ ├─ ▸ ⬢ orchestrator     idle      opus-5-5
+ │     main  no PR
+ ├─ ▸ ⬢ abc-123          working   opus-5-5  ✎ writing Edit
+ │     feat/abc-123-login  #5 ✓  bead abc-123
+ ├─ ▸ ⬢ abc-456          blocked   sonnet-5-5  ⚙ tool Bash
+ │     feat/abc-456-api  #7 ✗  bead abc-456
+ └─ ▸ ⬢ abc-789          idle      sonnet-5-5  ◉ monitoring ×1
+       feat/abc-789-docs  #9 ●  bead abc-789
+
+◉ widgets  1 agents
+ └─ ▸ ⬢ xyz-001          done      opus-5-5
+       main  no PR  bead xyz-001
 ```
 
-A pink connector means something under that repo is blocked or has failing CI.
+### 2. graph (default)
+
+Top-down topology. The primary-checkout agent (here, an orchestrator) sits on top, a bus line fans out to its workers, and a repo with no owner gets a hub box instead. A pink connector means something under that repo is blocked or has failing CI. The selected card has the double border.
+
+```
+ HERDR AGENT DASHBOARD  ACTIVE 1/5   BLOCKED 1   CI FAIL 1   view: graph
+
+                                ╭─ demo ─────────────────── ▸ ╮
+                                │ ⬢ orchestrator    idle      │
+                                │ opus-5-5                    │
+                                │ main                        │
+                                │ no PR                       │
+                                ╰─────────────────────────────╯
+                                               │
+               ╭───────────────────────────────┼───────────────────────────────╮
+               │                               │                               │
+╔═ ▶ demo ═════════════════ ▸ ╗ ╭─ demo ─────────────────── ▸ ╮ ╭─ demo ─────────────────── ▸ ╮
+║ ⬢ abc-123         working   ║ │ ⬢ abc-456         blocked   │ │ ⬢ abc-789         idle      │
+║ opus-5-5  ✎ writing Edit    ║ │ sonnet-5-5  ⚙ tool Bash     │ │ sonnet-5-5  ◉ monitoring ×1 │
+║ feat/abc-123-login          ║ │ feat/abc-456-api            │ │ feat/abc-789-docs           │
+║ #5 ✓  bead abc-123          ║ │ #7 ✗  bead abc-456          │ │ #9 ●  bead abc-789          │
+╚═════════════════════════════╝ ╰─────────────────────────────╯ ╰─────────────────────────────╯
+
+    ╭────────────────────╮
+    │ ◉ widgets 1        │
+    ╰────────────────────╯
+               │
+               │
+╭─ widgets ──────────────── ▸ ╮
+│ ⬢ xyz-001         done      │
+│ opus-5-5                    │
+│ main                        │
+│ no PR  bead xyz-001         │
+╰─────────────────────────────╯
+```
+
+### 3. grid
+
+Bordered cards in columns, as many per row as fit.
+
+```
+ HERDR AGENT DASHBOARD  ACTIVE 1/5   BLOCKED 1   CI FAIL 1   view: grid
+
+╭─ demo ─────────────────── ▸ ╮ ╔═ ▶ demo ═════════════════ ▸ ╗ ╭─ demo ─────────────────── ▸ ╮
+│ ⬢ orchestrator    idle      │ ║ ⬢ abc-123         working   ║ │ ⬢ abc-456         blocked   │
+│ opus-5-5                    │ ║ opus-5-5  ✎ writing Edit    ║ │ sonnet-5-5  ⚙ tool Bash     │
+│ main                        │ ║ feat/abc-123-login          ║ │ feat/abc-456-api            │
+│ no PR                       │ ║ #5 ✓  bead abc-123          ║ │ #7 ✗  bead abc-456          │
+╰─────────────────────────────╯ ╚═════════════════════════════╝ ╰─────────────────────────────╯
+╭─ demo ─────────────────── ▸ ╮ ╭─ widgets ──────────────── ▸ ╮
+│ ⬢ abc-789         idle      │ │ ⬢ xyz-001         done      │
+│ sonnet-5-5  ◉ monitoring ×1 │ │ opus-5-5                    │
+│ feat/abc-789-docs           │ │ main                        │
+│ #9 ●  bead abc-789          │ │ no PR  bead xyz-001         │
+╰─────────────────────────────╯ ╰─────────────────────────────╯
+```
+
+### 4. table
+
+One line per agent, for lots of agents.
+
+```
+ HERDR AGENT DASHBOARD  ACTIVE 1/5   BLOCKED 1   CI FAIL 1   view: table
+
+     AGENT           STATUS   PHASE                 MODEL           REPO          BRANCH                              PR / CI
+
+ ▸ ⬢ orchestrator    idle                           opus-5-5        demo          main                                no PR
+ ▸ ⬢ abc-123         working  ✎ writing Edit        opus-5-5        demo          feat/abc-123-login                  #5 ✓
+ ▸ ⬢ abc-456         blocked  ⚙ tool Bash           sonnet-5-5      demo          feat/abc-456-api                    #7 ✗
+ ▸ ⬢ abc-789         idle     ◉ monitoring ×1       sonnet-5-5      demo          feat/abc-789-docs                   #9 ●
+ ▸ ⬢ xyz-001         done                           opus-5-5        widgets       main                                no PR
+```
+
+### 5. fan
+
+The original left-to-right layout: a repo hub fanning out to its agents. It has no details drawer.
+
+```
+ HERDR AGENT DASHBOARD  ACTIVE 1/5   BLOCKED 1   CI FAIL 1   view: fan
+
+                       ╭── ⬢ orchestrator     idle      opus-5-5
+                       │   main  no PR
+╭────────────────────╮ ├── ⬢ abc-123          working   opus-5-5  ✎ writing Edit
+│ ◉ demo 4           ├─┤   feat/abc-123-login  #5 ✓  bead abc-123
+╰────────────────────╯ ├── ⬢ abc-456          blocked   sonnet-5-5  ⚙ tool Bash
+                       │   feat/abc-456-api  #7 ✗  bead abc-456
+                       ╰── ⬢ abc-789          idle      sonnet-5-5  ◉ monitoring ×1
+                           feat/abc-789-docs  #9 ●  bead abc-789
+
+╭────────────────────╮
+│ ◉ widgets 1        ├──── ⬢ xyz-001          done      opus-5-5
+╰────────────────────╯     main  no PR  bead xyz-001
+```
 
 ## Install
 
@@ -162,7 +262,7 @@ default.
 | `double_click_ms` | `400` | double-click window |
 | `expand_on_click` | `true` | single click toggles the drawer; `false` = click only selects |
 | `bead_pattern` | `'^[a-z]+-[a-z0-9]+$'` | which agent names are bead ids |
-| `beads_dir` | unset | `BEADS_DIR` for `bd`, see below |
+| `beads_dir` | unset | `BEADS_DIR` for `bd`; a plugin pane does not inherit it from your shell |
 | `extra_path` | `~/.local/bin`, `~/go/bin`, `/opt/homebrew/bin`, `/usr/local/bin` | appended to `PATH` |
 | `owner_mode` | `"primary"` | `primary`: primary-checkout agents own linked-worktree agents; `none`: plain repo hub |
 | `session_tail_kb` | `1024` | how much of each session log to read |
@@ -172,66 +272,6 @@ default.
 | `recent_tools` | `6` | tool calls listed under RECENT |
 
 Colors, status glyphs and the double-click window's feel are not themeable yet.
-
-## How it works, and what we learned
-
-Notes for anyone building a similar plugin, or debugging this one.
-
-**A plugin pane is a terminal program.** Herdr plugins have no native UI, so this is a
-TUI (Go, Bubble Tea v2). The manifest declares one pane with `placement = "tab"` and a
-`global` action that opens it. Jumping runs `herdr agent focus <pane>` and exits, which
-closes the tab. `herdr plugin link` does not run the build step, so rebuild with
-`go build -o bin/dashboard ./cmd/dashboard` after changing code, and reopen the tab,
-because an open tab keeps running the old binary.
-
-**The pane does not inherit your shell environment.** Two things bit us:
-
-- `PATH` can be thin, so `bd`, `gh` and `git` are not found. The dashboard appends
-  `extra_path` at startup.
-- `bd` locates its database through `BEADS_DIR`, usually exported from a shell profile.
-  Without it, `bd show` fails with exit 1 ("no beads database found") from any directory,
-  so bead fields silently stay empty. The dashboard uses `$BEADS_DIR` if present, else
-  `beads_dir` from the config, else `~/.beads/beadsDB`, then `~/.beads`.
-
-**Herdr's status and what the agent is doing are different things.** Herdr reports
-`idle`, `working`, `blocked` or `done`. For `working` agents the dashboard reads the
-newest entry of the Claude session log
-(`~/.claude/projects/<cwd with / and . replaced by ->/<session id>.jsonl`). Each log line
-holds one content block, so the last line tells you the phase: a `thinking` block is
-thinking; a `text` block or an `Edit` / `Write` / `NotebookEdit` call is writing; a
-`Monitor` / `ScheduleWakeup` / `TaskOutput` call is monitoring; any other tool call is a
-tool; a `tool_result` means the agent is about to think.
-
-**Idle can still mean busy.** An agent waiting on a background `Monitor` is `idle` to
-Herdr. The dashboard counts live monitors from the log: a `Monitor started (task ...,
-expires in Nm ...)` tool result starts one, and it ends at its expiry time or when a
-`<task-notification>` for that task carries a `<status>`. Monitor *event* notifications
-have no status and do not end it. The patterns are anchored on the tool-result content so
-a monitor line that merely appears in quoted output is not counted.
-
-**Ownership is not in bd.** Beads record `created_by` and dependencies, not who spawned
-a bead, and agents created through `herdr worktree create` leave no parent link. Herdr
-does know which workspace is a repo's primary checkout and which are linked worktrees of
-it, so the graph view treats the primary-checkout agent as the owner of the linked
-worktrees' agents. That matches the common "orchestrator in the main checkout, workers in
-worktrees" setup. Repos without that split fall back to a plain hub box. Set
-`owner_mode = "none"` to always use the hub.
-
-**Bead id = agent name** is a convention, not something Herdr or bd enforces. Change
-`bead_pattern` if your agents are named differently. An agent that owns several beads is
-only matched on the one in its name.
-
-**CI is collapsed to one mark.** Any failed / cancelled / timed-out / action-required
-check is `fail`; otherwise any unfinished check is `pending`; otherwise `pass`; no checks
-is `none`. Both check runs and commit statuses are understood.
-
-**`gh` is the expensive call.** PR and CI are fetched in parallel in the background and
-cached, and the UI never waits on them (a field still loading is blank). Raise
-`pr_refresh_seconds` if you run many agents or hit API limits.
-
-**The session log format is Claude Code's, not a stable API.** Model, phase, monitors,
-context size and the drawer's session rows all depend on it. If a Claude Code update
-changes the format, those fields degrade to blank rather than breaking the dashboard.
 
 ## Troubleshooting
 
@@ -256,6 +296,7 @@ changes the format, those fields degrade to blank rather than breaking the dashb
 ```sh
 go build -o bin/dashboard ./cmd/dashboard
 go test ./...
+MOCK_OUT=/some/dir go test ./cmd/dashboard -run GenMocks   # regenerate the README view mocks
 herdr plugin link .      # once; re-run after manifest changes
 ```
 
@@ -268,20 +309,6 @@ herdr plugin link .      # once; re-run after manifest changes
 | `cmd/dashboard/data.go` | snapshot, git / model / phase / monitor enrichment, `gh` PR + CI |
 | `cmd/dashboard/detail.go` | drawer data (bead, PR, git, session) and rendering |
 | `cmd/dashboard/config.go` | config file |
-
-## Listing on the Herdr marketplace
-
-Per the [marketplace docs](https://herdr.dev/docs/marketplace/), a repository is indexed
-automatically (refreshing every 30 minutes) when it is public, not a fork or archived,
-has the GitHub topic `herdr-plugin`, and its default branch contains a parseable
-`herdr-plugin.toml`. This repo's manifest declares the required `id`, `name`, `version`
-and `min_herdr_version`, plus `platforms`.
-
-```sh
-gh repo edit --add-topic herdr-plugin
-```
-
-Bump `version` in `herdr-plugin.toml` for each release; the listing shows it.
 
 ## License
 
