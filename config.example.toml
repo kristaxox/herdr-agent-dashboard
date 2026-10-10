@@ -1,0 +1,31 @@
+# Copy to <plugin config dir>/config.toml. Find the directory with:
+#   herdr plugin config-dir kristaxox.agent-dashboard
+# Every key is optional; the values below are the defaults.
+
+default_view = "graph"           # tree | graph | grid | table | fan
+poll_seconds = 2                 # agent list, branch, model, activity phase
+pr_refresh_seconds = 30          # PR + CI status (one `gh` call per agent)
+detail_refresh_seconds = 15      # open drawers only
+double_click_ms = 400
+expand_on_click = true           # single click toggles the drawer; false = click only selects
+
+# How an agent's name maps to a bead id. Agents whose name matches get a bead
+# tag on the card and a BEAD/DESCRIPTION section in the drawer.
+bead_pattern = '^[a-z]+-[a-z0-9]+$'
+
+# bd finds its database through BEADS_DIR, which a plugin pane usually does not
+# inherit from your shell. Set it here if it is not ~/.beads/beadsDB or ~/.beads.
+# beads_dir = "~/.beads/beadsDB"
+
+# Appended to PATH so the pane can find bd, gh and git.
+extra_path = ["~/.local/bin", "~/go/bin", "/opt/homebrew/bin", "/usr/local/bin"]
+
+# "primary": agents in a repo's primary checkout sit above agents in its linked
+# worktrees (graph view). "none": always use a plain repo hub box.
+owner_mode = "primary"
+
+session_tail_kb = 1024           # how much of each Claude session log to read
+card_min_width = 40              # cards per row = terminal width / this
+description_lines = 18           # bead description lines shown in the drawer
+said_chars = 500                 # length of the agent's last message in the drawer
+recent_tools = 6                 # tool calls listed under RECENT
