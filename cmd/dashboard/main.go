@@ -202,7 +202,9 @@ func (m model) jump(i int) tea.Cmd {
 
 // ---- rendering ----
 
-func c(code int, s string) string { return fmt.Sprintf("\x1b[38;5;%dm%s\x1b[0m", code, s) }
+// c colours s. It resets only the foreground (39), so it does not cancel the
+// reverse video that sel() wraps around a selected row.
+func c(code int, s string) string { return fmt.Sprintf("\x1b[38;5;%dm%s\x1b[39m", code, s) }
 
 func statusColor(s string) int {
 	switch s {
