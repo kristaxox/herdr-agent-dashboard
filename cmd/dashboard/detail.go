@@ -294,6 +294,9 @@ func (m model) drawer(a Agent, w int) []string {
 			add("SAID", trunc(strings.Join(strings.Fields(d.Said), " "), cfg.SaidChars))
 		}
 	}
+	if len(a.MonDescs) > 0 {
+		add("MONITORING", strings.Join(a.MonDescs, "\n"))
+	}
 	add("HERDR", fmt.Sprintf("pane %s · workspace %s (%s) · tab %s\n%s\n%s", a.PaneID, a.Workspace, a.Repo, a.Tab, a.Title, a.Cwd))
 	title := " ▾ details · " + a.Name + " "
 	out := []string{c(214, "╭─"+title) + c(214, strings.Repeat("─", max(w-3-len([]rune(title)), 0))+"╮")}
