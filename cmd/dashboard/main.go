@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -37,9 +36,11 @@ const headH, footH = 2, 1
 
 func main() {
 	// plugin panes can inherit a thin PATH; make sure bd, gh and git are findable
-	home, _ := os.UserHomeDir()
-	os.Setenv("PATH", os.Getenv("PATH")+":"+home+"/.local/bin:"+home+"/go/bin:/opt/homebrew/bin:/usr/local/bin")
-	if _, err := tea.NewProgram(model{prs: map[string]PR{}, open: map[string]bool{}, details: map[string]Detail{}, inflight: map[string]bool{}}).Run(); err != nil {
+	loadConfig(configPath())
+	for _, p := range cfg.ExtraPath {
+		os.Setenv("PATH", os.Getenv("PATH")+":"+expandHome(p))
+	}
+	if _, err := tea.NewProgram(model{mode: cfg.viewIndex(), prs: map[string]PR{}, open: map[string]bool{}, details: map[string]Detail{}, inflight: map[string]bool{}}).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -88,7 +89,9 @@ func rank(s string) int {
 	return 3
 }
 
-func tick() tea.Cmd { return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
+func tick() tea.Cmd {
+	return tea.Tick(sec(cfg.PollSeconds), func(time.Time) tea.Msg { return tickMsg{} })
+}
 
 func (m model) Init() tea.Cmd { return tea.Batch(snapCmd, tick()) }
 
@@ -107,7 +110,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sel = min(m.sel, max(len(m.agents)-1, 0))
 		}
 		cmds := m.detailCmds()
-		if !m.prBusy && time.Since(m.prAt) > 30*time.Second && len(m.agents) > 0 {
+		if !m.prBusy && time.Since(m.prAt) > sec(cfg.PRRefreshSecs) && len(m.agents) > 0 {
 			m.prBusy = true
 			as := m.agents
 			cmds = append(cmds, func() tea.Msg { return prMsg(fetchPRs(as)) })
@@ -157,12 +160,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				for _, h := range hits {
 					if h.tog == tog && y >= h.y0 && y < h.y1 && ms.X >= h.x0 && ms.X < h.x1 {
 						m.sel = h.ai
-						dbl := !tog && h.ai == m.lastAI && time.Since(m.lastClick) < 400*time.Millisecond
+						dbl := !tog && h.ai == m.lastAI && time.Since(m.lastClick) < time.Duration(cfg.DoubleClickMs)*time.Millisecond
 						m.lastClick, m.lastAI = time.Now(), h.ai
 						if dbl {
 							return m, m.jump(m.sel)
 						}
-						m.toggle(m.agents[h.ai].PaneID) // single click (or the triangle) opens/closes details
+						if tog || cfg.ExpandOnClick {
+							m.toggle(m.agents[h.ai].PaneID) // single click (or the triangle) opens/closes details
+						}
 						return m, tea.Batch(m.detailCmds()...)
 					}
 				}
@@ -207,8 +212,6 @@ func fit(s string, n int) string {
 	return s + strings.Repeat(" ", n-len(r))
 }
 
-var beadRe = regexp.MustCompile(`^[a-z]+-[a-z0-9]+$`)
-
 func ciGlyph(p PR) string {
 	if p.Num == 0 {
 		return c(240, "no PR")
@@ -249,7 +252,7 @@ func (m model) toggle(pane string) { m.open[pane] = !m.open[pane] }
 func (m model) detailCmds() []tea.Cmd {
 	var cmds []tea.Cmd
 	for _, a := range m.agents {
-		if d, ok := m.details[a.PaneID]; !m.open[a.PaneID] || m.inflight[a.PaneID] || (ok && time.Since(d.At) < 15*time.Second) {
+		if d, ok := m.details[a.PaneID]; !m.open[a.PaneID] || m.inflight[a.PaneID] || (ok && time.Since(d.At) < sec(cfg.DetailRefresh)) {
 			continue
 		}
 		m.inflight[a.PaneID] = true

@@ -126,7 +126,7 @@ func sessionTail(cwd, session string) []byte {
 	}
 	defer f.Close()
 	st, _ := f.Stat()
-	const tail = 1 << 20 // ponytail: last 1MB only (monitors live up to ~30m); widen if a model/monitor line is ever missed
+	tail := int64(cfg.SessionTailKB) << 10 // ponytail: tail only (monitors live up to ~30m); raise session_tail_kb if a model/monitor line is missed
 	off := max(st.Size()-tail, 0)
 	buf := make([]byte, st.Size()-off)
 	f.ReadAt(buf, off)

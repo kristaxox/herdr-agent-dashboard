@@ -57,19 +57,16 @@ func runWith(dir string, env []string, name string, args ...string) (string, err
 
 // beadsEnv: bd finds its database through BEADS_DIR, which a plugin pane may not
 // inherit from the user's shell. Use the pane's value if set, else a file named
-// beads-dir in the plugin config dir, else the common global locations.
+// beads_dir in config.toml, else the common global locations.
 func beadsEnv() []string {
 	if os.Getenv("BEADS_DIR") != "" {
 		return nil
 	}
 	home, _ := os.UserHomeDir()
-	var cands []string
-	if cfg := os.Getenv("HERDR_PLUGIN_CONFIG_DIR"); cfg != "" {
-		if b, err := os.ReadFile(cfg + "/beads-dir"); err == nil {
-			cands = append(cands, strings.TrimSpace(string(b)))
-		}
+	cands := []string{home + "/.beads/beadsDB", home + "/.beads"}
+	if cfg.BeadsDir != "" {
+		cands = []string{cfg.BeadsDir} // explicit config wins; no guessing
 	}
-	cands = append(cands, home+"/.beads/beadsDB", home+"/.beads")
 	for _, c := range cands {
 		if st, err := os.Stat(c); err == nil && st.IsDir() {
 			return []string{"BEADS_DIR=" + c}
@@ -187,8 +184,8 @@ func parseSession(buf []byte, d *Detail) {
 			}
 		}
 	}
-	if len(d.Tools) > 6 {
-		d.Tools = d.Tools[len(d.Tools)-6:]
+	if len(d.Tools) > cfg.RecentTools {
+		d.Tools = d.Tools[len(d.Tools)-cfg.RecentTools:]
 	}
 }
 
@@ -294,13 +291,14 @@ func (m model) drawer(a Agent, w int) []string {
 			add("RECENT", strings.Join(d.Tools, "\n"))
 		}
 		if d.Said != "" {
-			add("SAID", trunc(strings.Join(strings.Fields(d.Said), " "), 500))
+			add("SAID", trunc(strings.Join(strings.Fields(d.Said), " "), cfg.SaidChars))
 		}
 	}
 	add("HERDR", fmt.Sprintf("pane %s · workspace %s (%s) · tab %s\n%s\n%s", a.PaneID, a.Workspace, a.Repo, a.Tab, a.Title, a.Cwd))
 	title := " ▾ details · " + a.Name + " "
 	out := []string{c(214, "╭─"+title) + c(214, strings.Repeat("─", max(w-3-len([]rune(title)), 0))+"╮")}
-	const lw, maxDesc = 12, 18
+	const lw = 12
+	maxDesc := cfg.DescriptionMax
 	for _, r := range rows {
 		ls := wrapRow(r[1], in-lw)
 		if r[0] == "DESCRIPTION" && len(ls) > maxDesc {

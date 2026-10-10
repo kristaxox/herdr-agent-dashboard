@@ -175,7 +175,7 @@ func (m model) fanView() ([]string, []rect) {
 
 // ---- grid: cards, Agent Grid style ----
 
-func (m model) cols() int { return max(m.w/40, 1) }
+func (m model) cols() int { return max(m.w/cfg.CardMinWidth, 1) }
 
 func (m model) gridView() ([]string, []rect) {
 	cols := m.cols()
@@ -302,7 +302,7 @@ func (m model) graphView() ([]string, []rect) {
 				kids = append(kids, i)
 			}
 		}
-		useOwner := len(owners) > 0 && len(kids) > 0
+		useOwner := cfg.OwnerMode != "none" && len(owners) > 0 && len(kids) > 0
 		if !useOwner {
 			owners, kids = nil, nil
 			for i := start; i < end; i++ {

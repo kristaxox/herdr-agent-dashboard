@@ -2,7 +2,10 @@ module github.com/kristaxox/herdr-claude-dashboard
 
 go 1.26.0
 
-require charm.land/bubbletea/v2 v2.1.0
+require (
+	charm.land/bubbletea/v2 v2.1.0
+	github.com/BurntSushi/toml v1.6.0
+)
 
 require (
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
