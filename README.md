@@ -310,6 +310,10 @@ herdr plugin link .      # once; re-run after manifest changes
 | `cmd/dashboard/detail.go` | drawer data (bead, PR, git, session) and rendering |
 | `cmd/dashboard/config.go` | config file |
 
+## Contributing
+
+Issues and PRs are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
 [MIT](LICENSE)
