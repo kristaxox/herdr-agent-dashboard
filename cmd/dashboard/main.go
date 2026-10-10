@@ -28,6 +28,9 @@ type model struct {
 	open     map[string]bool
 	details  map[string]Detail
 	inflight map[string]bool
+	// double-click detection
+	lastClick time.Time
+	lastAI    int
 }
 
 const headH, footH = 2, 1
@@ -151,11 +154,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				for _, h := range hits {
 					if h.tog == tog && y >= h.y0 && y < h.y1 && ms.X >= h.x0 && ms.X < h.x1 {
 						m.sel = h.ai
-						if tog {
-							m.toggle(m.agents[h.ai].PaneID)
-							return m, tea.Batch(m.detailCmds()...)
+						dbl := !tog && h.ai == m.lastAI && time.Since(m.lastClick) < 400*time.Millisecond
+						m.lastClick, m.lastAI = time.Now(), h.ai
+						if dbl {
+							return m, m.jump(m.sel)
 						}
-						return m, m.jump(m.sel)
+						m.toggle(m.agents[h.ai].PaneID) // single click (or the triangle) opens/closes details
+						return m, tea.Batch(m.detailCmds()...)
 					}
 				}
 			}

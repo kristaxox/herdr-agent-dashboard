@@ -96,7 +96,7 @@ func (m model) View() tea.View {
 		b.WriteString(lines[i] + "\n")
 	}
 	b.WriteString(strings.Repeat("\n", max(avail-(end-off), 0)))
-	b.WriteString(c(240, " ↑↓←→/hjkl move · enter/click jump · v/tab or 1-5 switch view · e/space expand · E all · q close"))
+	b.WriteString(c(240, " ↑↓←→/hjkl move · click details · double-click/enter jump · v/tab or 1-5 switch view · e/space expand · E all · q close"))
 	v := tea.NewView(b.String())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
