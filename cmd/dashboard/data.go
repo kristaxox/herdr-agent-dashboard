@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,7 +18,8 @@ type Agent struct {
 	WS                                       int  // workspace order
 	Primary                                  bool // lives in the repo's primary checkout, i.e. owns the linked worktrees
 	Branch, Model, Phase, Tool               string
-	Monitors                                 int // live Monitor tasks, from the session log
+	Monitors                                 int      // live Monitor tasks, from the session log
+	MonDescs                                 []string // what they watch (the Monitor call's description), oldest first
 	Workspace, Tab, Title                    string
 	PR                                       PR
 }
@@ -103,7 +106,8 @@ func enrichFast(a *Agent) {
 	buf := sessionTail(a.Cwd, a.Session)
 	a.Model = lastModel(buf)
 	a.Phase, a.Tool = "", ""
-	a.Monitors = countMonitors(buf, time.Now())
+	a.MonDescs = activeMonitors(buf, time.Now())
+	a.Monitors = len(a.MonDescs)
 	if a.Status == "working" {
 		a.Phase, a.Tool = lastPhase(buf)
 	} else if a.Monitors > 0 {
@@ -118,18 +122,32 @@ func claudeSlug(cwd string) string {
 	return strings.NewReplacer("/", "-", ".", "-").Replace(cwd)
 }
 
+var contRe = regexp.MustCompile(`"continuedInSessionId":"([^"]+)"`)
+
+// sessionTail reads the end of the session log. When a session was continued
+// (context compaction/clear) the old log ends with a pointer to the new one, but
+// herdr keeps reporting the old id, so follow the chain.
 func sessionTail(cwd, session string) []byte {
 	home, _ := os.UserHomeDir()
-	f, err := os.Open(home + "/.claude/projects/" + claudeSlug(cwd) + "/" + session + ".jsonl")
-	if err != nil {
-		return nil
+	var buf []byte
+	for hop := 0; hop < 8 && session != ""; hop++ {
+		f, err := os.Open(home + "/.claude/projects/" + claudeSlug(cwd) + "/" + session + ".jsonl")
+		if err != nil {
+			break
+		}
+		st, _ := f.Stat()
+		tail := int64(cfg.SessionTailKB) << 10 // ponytail: tail only (monitors live up to ~30m); raise session_tail_kb if a model/monitor line is missed
+		off := max(st.Size()-tail, 0)
+		b := make([]byte, st.Size()-off)
+		f.ReadAt(b, off)
+		f.Close()
+		buf = b
+		m := contRe.FindSubmatch(b)
+		if m == nil || string(m[1]) == session {
+			break
+		}
+		session = string(m[1])
 	}
-	defer f.Close()
-	st, _ := f.Stat()
-	tail := int64(cfg.SessionTailKB) << 10 // ponytail: tail only (monitors live up to ~30m); raise session_tail_kb if a model/monitor line is missed
-	off := max(st.Size()-tail, 0)
-	buf := make([]byte, st.Size()-off)
-	f.ReadAt(buf, off)
 	return buf
 }
 
@@ -250,17 +268,28 @@ var (
 	monStartRe = regexp.MustCompile(`"content":"Monitor started \(task (\w+), expires in (\d+)m`) // anchored: output quoted elsewhere in a log must not match
 	tsRe       = regexp.MustCompile(`"timestamp":"([^"]+)"`)
 	taskIDRe   = regexp.MustCompile(`<task-id>(\w+)</task-id>`)
+	monCallRe  = regexp.MustCompile(`"id":"(toolu_\w+)","name":"Monitor","input":\{.*?"description":"((?:[^"\\]|\\.)*)"`)
+	toolIDRe   = regexp.MustCompile(`"tool_use_id":"(toolu_\w+)"`)
 )
 
 // countMonitors counts Monitor tasks that have started, haven't hit their expiry
 // and haven't reported a final <status> notification. Monitor *events* carry no
 // <status>, so they don't end a task.
-func countMonitors(buf []byte, now time.Time) int {
-	type mon struct{ until time.Time }
+func activeMonitors(buf []byte, now time.Time) []string {
+	type mon struct {
+		until time.Time
+		desc  string
+		at    time.Time
+	}
+	descs := map[string]string{} // tool_use id -> description
 	started := map[string]mon{}
 	ended := map[string]bool{}
 	for _, l := range strings.Split(string(buf), "\n") {
 		switch {
+		case strings.Contains(l, `"name":"Monitor"`):
+			if m := monCallRe.FindStringSubmatch(l); m != nil {
+				descs[m[1]] = unescape(m[2])
+			}
 		case strings.Contains(l, `"content":"Monitor started (`):
 			m, t := monStartRe.FindStringSubmatch(l), tsRe.FindStringSubmatch(l)
 			if m == nil || t == nil {
@@ -272,18 +301,34 @@ func countMonitors(buf []byte, now time.Time) int {
 			}
 			mins := 0
 			fmt.Sscanf(m[2], "%d", &mins)
-			started[m[1]] = mon{ts.Add(time.Duration(mins) * time.Minute)}
+			d := ""
+			if id := toolIDRe.FindStringSubmatch(l); id != nil {
+				d = descs[id[1]]
+			}
+			started[m[1]] = mon{ts.Add(time.Duration(mins) * time.Minute), d, ts}
 		case strings.Contains(l, `"content":"<task-notification>`) && strings.Contains(l, "<status>"):
 			if m := taskIDRe.FindStringSubmatch(l); m != nil {
 				ended[m[1]] = true
 			}
 		}
 	}
-	n := 0
+	var live []mon
 	for id, m := range started {
 		if !ended[id] && now.Before(m.until) {
-			n++
+			live = append(live, m)
 		}
 	}
-	return n
+	sort.Slice(live, func(i, j int) bool { return live[i].at.Before(live[j].at) })
+	out := make([]string, len(live))
+	for i, m := range live {
+		out[i] = firstOf(m.desc, "(no description)")
+	}
+	return out
+}
+
+func unescape(s string) string {
+	if u, err := strconv.Unquote(`"` + s + `"`); err == nil {
+		return u
+	}
+	return s
 }

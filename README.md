@@ -231,6 +231,7 @@ If you do things differently:
 | --- | --- | --- |
 | name, status, pane, workspace | `herdr api snapshot` | every `poll_seconds` |
 | activity (thinking / writing / tool / monitoring) | tail of the Claude session log | every `poll_seconds` |
+| what each monitor is watching (`MONITORING` row in the drawer) | the `description` of the Monitor call in the session log | every `poll_seconds` |
 | model | last `"model"` in the session log | every `poll_seconds` |
 | branch | `git branch --show-current` in the agent's cwd | every `poll_seconds` |
 | PR number, CI | `gh pr view --json ...` in the agent's cwd, run in the background | every `pr_refresh_seconds` |
