@@ -62,7 +62,24 @@ func TestSessionTailFollowsContinuation(t *testing.T) {
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(dir+"/a.jsonl", []byte(`{"type":"continued-in","continuedInSessionId":"b"}`+"\n"), 0o644)
 	os.WriteFile(dir+"/b.jsonl", []byte(`{"model":"claude-new"}`+"\n"), 0o644)
-	if got := lastModel(sessionTail("/x/y", "a")); got != "new" {
+	if buf, s := sessionTail("/x/y", "a"); lastModel(buf) != "new" || s != "b" {
+		t.Errorf("got %q from %s", lastModel(buf), s)
+	}
+}
+
+func TestActiveSubagents(t *testing.T) {
+	call := func(id, desc string) string {
+		return `{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_` + id + `","name":"Agent","input":{"description":"` + desc + `","subagent_type":"Explore","prompt":"say \"hi\""}}]}}` + "\n"
+	}
+	result := func(id, text string) string {
+		return `{"message":{"role":"user","content":[{"tool_use_id":"toolu_` + id + `","type":"tool_result","content":[{"type":"text","text":"` + text + `"}]}]}}` + "\n"
+	}
+	notif := `{"message":{"role":"user","content":"<task-notification>\n<task-id>x</task-id>\n<tool-use-id>toolu_b</tool-use-id>\n<status>completed</status>"}}` + "\n"
+	buf := call("a", "fg done") + result("a", "report") + // foreground, finished
+		call("b", "bg done") + result("b", "Async agent launched successfully.") + notif + // background, finished
+		call("c", "bg running") + result("c", "Async agent launched successfully.") + // background, running
+		call("d", "fg running") // foreground, running
+	if got := activeSubagents([]byte(buf)); len(got) != 2 || got[0] != (sub{"toolu_c", "Explore", "bg running"}) || got[1].desc != "fg running" {
 		t.Errorf("got %q", got)
 	}
 }

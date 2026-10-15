@@ -13,10 +13,26 @@ func (m model) edgeColor(a Agent) int {
 }
 
 func (m model) beadTag(a Agent) string {
-	if beadRe.MatchString(a.Name) {
+	if a.Parent == "" && beadRe.MatchString(a.Name) {
 		return c(141, "bead "+a.Name)
 	}
 	return ""
+}
+
+// name marks subagents, which follow their parent in every list.
+func name(a Agent) string {
+	if a.Parent != "" {
+		return "↳ " + a.Name
+	}
+	return a.Name
+}
+
+// prTag is the PR / CI glyph, or for a subagent its type (it shares the parent's PR).
+func (m model) prTag(a Agent) string {
+	if a.Parent != "" {
+		return c(177, "⑂ "+a.SubType)
+	}
+	return ciGlyph(m.prs[a.PaneID])
 }
 
 func tri(open bool) string {
@@ -52,7 +68,7 @@ func (m model) treeView() ([]string, []rect) {
 			repo = a.Repo
 			n := 0
 			for _, b := range m.agents {
-				if b.Repo == repo {
+				if b.Repo == repo && b.Parent == "" {
 					n++
 				}
 			}
@@ -63,9 +79,9 @@ func (m model) treeView() ([]string, []rect) {
 		if last {
 			br, vert = "└─", " "
 		}
-		col, pr, edge := statusColor(a.Status), m.prs[a.PaneID], m.edgeColor(a)
-		l1 := fmt.Sprintf(" %s %s %s %s %s  %s  %s", c(edge, br), tri(m.open[a.PaneID]), m.dot(a), fit(a.Name, 16), c(col, fit(a.Status, 8)), c(245, a.Model), phaseLabel(a))
-		l2 := fmt.Sprintf(" %s     %s  %s  %s", c(edge, vert), c(110, a.Branch), ciGlyph(pr), m.beadTag(a))
+		col, edge := statusColor(a.Status), m.edgeColor(a)
+		l1 := fmt.Sprintf(" %s %s %s %s %s  %s  %s", c(edge, br), tri(m.open[a.PaneID]), m.dot(a), fit(name(a), 16), c(col, fit(a.Status, 8)), c(245, a.Model), phaseLabel(a))
+		l2 := fmt.Sprintf(" %s     %s  %s  %s", c(edge, vert), c(110, a.Branch), m.prTag(a), m.beadTag(a))
 		hits = append(hits, rect{4, len(lines), 6, len(lines) + 1, i, true}, rect{0, len(lines), m.w, len(lines) + 2, i, false})
 		lines = append(lines, sel(l1, i == m.sel), sel(l2, i == m.sel))
 		if m.open[a.PaneID] {
@@ -96,6 +112,10 @@ func trunk(up, down, right, left bool) string {
 		return "╭"
 	case up && right:
 		return "╰"
+	case down && left:
+		return "╮"
+	case up && left:
+		return "╯"
 	case up && down:
 		return "│"
 	case right && left, right:
@@ -152,9 +172,9 @@ func (m model) fanView() ([]string, []rect) {
 				a := grp[(r-off)/2]
 				col := statusColor(a.Status)
 				if agentRow {
-					text = fmt.Sprintf("%s─ %s %s %s  %s  %s", c(ec, "─"), m.dot(a), fit(a.Name, 16), c(col, fit(a.Status, 8)), c(245, a.Model), phaseLabel(a))
+					text = fmt.Sprintf("%s─ %s %s %s  %s  %s", c(ec, "─"), m.dot(a), fit(name(a), 16), c(col, fit(a.Status, 8)), c(245, a.Model), phaseLabel(a))
 				} else {
-					text = fmt.Sprintf("   %s  %s  %s", c(110, a.Branch), ciGlyph(m.prs[a.PaneID]), m.beadTag(a))
+					text = fmt.Sprintf("   %s  %s  %s", c(110, a.Branch), m.prTag(a), m.beadTag(a))
 				}
 				if !agentRow {
 					t = trunk(r < lastRow, r < lastRow, false, left) // the hub may land on a detail line
@@ -288,9 +308,13 @@ func (m model) card(a Agent, on bool, cw, in int) []string {
 	n := 2*cw + 2*(rows-2)
 	bd := func(p int) int { return borderColor(a, bc, p, n, m.frame) }
 	bc1 := func(p int, s string) string { return c(bd(p), s) }
-	title := " " + trunc(a.Repo, in-6) + " "
+	label := a.Repo
+	if a.Parent != "" {
+		label = "⑂ " + a.Parent
+	}
+	title := " " + trunc(label, in-6) + " "
 	if on {
-		title = " ▶ " + trunc(a.Repo, in-8) + " "
+		title = " ▶ " + trunc(label, in-8) + " "
 	}
 	top := bc1(0, tl) + bc1(1, h) + c(111, title)
 	for x := 2 + vlen(title); x < cw-4; x++ {
@@ -311,13 +335,12 @@ func (m model) card(a Agent, on bool, cw, in int) []string {
 		}
 		bottom += bc1(cw+4+(cw-1-x), s)
 	}
-	pr := m.prs[a.PaneID]
 	return []string{
 		top,
 		row(1, fmt.Sprintf(" %s %s %s", m.dot(a), fit(a.Name, in-14), c(col, fit(a.Status, 9)))),
 		row(2, " "+c(245, a.Model)+"  "+phaseLabel(a)),
 		row(3, " "+c(110, trunc(a.Branch, in-2))),
-		row(4, " "+ciGlyph(pr)+"  "+m.beadTag(a)),
+		row(4, " "+m.prTag(a)+"  "+m.beadTag(a)),
 		bottom,
 	}
 }
@@ -329,8 +352,8 @@ func (m model) tableView() ([]string, []rect) {
 	var hits []rect
 	for i, a := range m.agents {
 		col := statusColor(a.Status)
-		l := fmt.Sprintf(" %s %s %s%s%s%s%s%s%s", tri(m.open[a.PaneID]), m.dot(a), fit(a.Name, 16), c(col, fit(a.Status, 9)),
-			padTo(phaseLabel(a), 22), fit(a.Model, 16), fit(a.Repo, 14), c(110, fit(a.Branch, 36)), ciGlyph(m.prs[a.PaneID]))
+		l := fmt.Sprintf(" %s %s %s%s%s%s%s%s%s", tri(m.open[a.PaneID]), m.dot(a), fit(name(a), 16), c(col, fit(a.Status, 9)),
+			padTo(phaseLabel(a), 22), fit(a.Model, 16), fit(a.Repo, 14), c(110, fit(a.Branch, 36)), m.prTag(a))
 		hits = append(hits, rect{1, len(lines), 3, len(lines) + 1, i, true}, rect{0, len(lines), m.w, len(lines) + 1, i, false})
 		lines = append(lines, sel(l, i == m.sel))
 		if m.open[a.PaneID] {
@@ -375,8 +398,13 @@ func (m model) graphView() ([]string, []rect) {
 		}
 		// owners (primary checkout) sit on top; linked-worktree agents hang below.
 		// No owner or no workers: fall back to a hub box over everyone.
-		var owners, kids []int
+		// subagents are left out here and hang under their parent's card (subTree).
+		var owners, kids, all []int
 		for i := start; i < end; i++ {
+			if m.agents[i].Parent != "" {
+				continue
+			}
+			all = append(all, i)
 			if m.agents[i].Primary {
 				owners = append(owners, i)
 			} else {
@@ -385,10 +413,7 @@ func (m model) graphView() ([]string, []rect) {
 		}
 		useOwner := cfg.OwnerMode != "none" && len(owners) > 0 && len(kids) > 0
 		if !useOwner {
-			owners, kids = nil, nil
-			for i := start; i < end; i++ {
-				kids = append(kids, i)
-			}
+			owners, kids = nil, all
 		}
 		ec := 240
 		for _, i := range kids {
@@ -408,9 +433,11 @@ func (m model) graphView() ([]string, []rect) {
 				n := min(len(owners), cols)
 				left := max(xc-(n*(cw+1)-1)/2, 0)
 				block := make([][]string, n)
+				lefts := make([]int, n)
 				for j := 0; j < n; j++ {
 					block[j] = m.card(m.agents[owners[j]], owners[j] == m.sel, cw, cw-2)
 					x := left + j*(cw+1)
+					lefts[j] = x
 					hits = append(hits, rect{x + cw - 4, len(lines), x + cw - 1, len(lines) + 1, owners[j], true}, rect{x, len(lines), x + cw, len(lines) + 6, owners[j], false})
 				}
 				lines = append(lines, indent(joinCards(block), left)...)
@@ -419,10 +446,11 @@ func (m model) graphView() ([]string, []rect) {
 						lines = append(lines, m.drawer(m.agents[o], m.w-1)...)
 					}
 				}
+				lines, hits = m.subTree(lines, hits, owners[:n], lefts, cw)
 			} else if ci == 0 {
 				pad := strings.Repeat(" ", max(xc-hubW/2, 0))
 				repo := m.agents[start].Repo
-				body := padTo(c(111, "◉ "+trunc(repo, hubW-10))+c(240, fmt.Sprintf(" %d", end-start)), hubW-4)
+				body := padTo(c(111, "◉ "+trunc(repo, hubW-10))+c(240, fmt.Sprintf(" %d", len(all))), hubW-4)
 				lines = append(lines,
 					pad+c(111, "╭"+strings.Repeat("─", hubW-2)+"╮"),
 					pad+c(111, "│ ")+body+c(111, " │"),
@@ -460,9 +488,11 @@ func (m model) graphView() ([]string, []rect) {
 			}
 			lines = append(lines, rowStr(drops))
 			block := make([][]string, k)
+			lefts := make([]int, k)
 			for j, ai := range chunk {
 				block[j] = m.card(m.agents[ai], ai == m.sel, cw, cw-2)
 				x := j * (cw + 1)
+				lefts[j] = x
 				hits = append(hits, rect{x + cw - 4, len(lines), x + cw - 1, len(lines) + 1, ai, true}, rect{x, len(lines), x + cw, len(lines) + 6, ai, false})
 			}
 			lines = append(lines, joinCards(block)...)
@@ -471,9 +501,68 @@ func (m model) graphView() ([]string, []rect) {
 					lines = append(lines, m.drawer(m.agents[ai], m.w-1)...)
 				}
 			}
+			lines, hits = m.subTree(lines, hits, chunk, lefts, cw)
 		}
 		lines = append(lines, "")
 		start = end
+	}
+	return lines, hits
+}
+
+// subTree hangs each parent's subagents (the agents right after it with Parent
+// set) below the card row just drawn, starting under the parent's card. Card
+// lefts[j] belongs to parents[j].
+// ponytail: two parents in one row with subagents stack their subtrees, and the
+// second's stem starts below the first's cards rather than running past them.
+func (m model) subTree(lines []string, hits []rect, parents, lefts []int, cw int) ([]string, []rect) {
+	const ec = 177
+	for j, p := range parents {
+		var subs []int
+		for i := p + 1; i < len(m.agents) && m.agents[i].Parent != ""; i++ {
+			subs = append(subs, i)
+		}
+		pc := lefts[j] + cw/2
+		for ci := 0; ci < len(subs); ci += m.cols() {
+			chunk := subs[ci:min(ci+m.cols(), len(subs))]
+			k := len(chunk)
+			left := max(min(lefts[j], m.w-(k*(cw+1)-1)), 0)
+			drop := map[int]bool{}
+			lo, hi := pc, pc
+			for n := range chunk {
+				x := left + n*(cw+1) + cw/2
+				drop[x] = true
+				lo, hi = min(lo, x), max(hi, x)
+			}
+			stem := '│'
+			if ci > 0 {
+				stem = '┆'
+			}
+			lines = append(lines, rowStr(map[int]cell{pc: {stem, ec}}))
+			if lo < hi {
+				bus := map[int]cell{}
+				for x := lo; x <= hi; x++ {
+					bus[x] = cell{[]rune(trunk(x == pc, drop[x], x < hi, x > lo))[0], ec}
+				}
+				lines = append(lines, rowStr(bus))
+			}
+			drops := map[int]cell{}
+			for x := range drop {
+				drops[x] = cell{'│', ec}
+			}
+			lines = append(lines, rowStr(drops))
+			block := make([][]string, k)
+			for n, ai := range chunk {
+				block[n] = m.card(m.agents[ai], ai == m.sel, cw, cw-2)
+				x := left + n*(cw+1)
+				hits = append(hits, rect{x + cw - 4, len(lines), x + cw - 1, len(lines) + 1, ai, true}, rect{x, len(lines), x + cw, len(lines) + 6, ai, false})
+			}
+			lines = append(lines, indent(joinCards(block), left)...)
+			for _, ai := range chunk {
+				if m.open[m.agents[ai].PaneID] {
+					lines = append(lines, m.drawer(m.agents[ai], m.w-1)...)
+				}
+			}
+		}
 	}
 	return lines, hits
 }

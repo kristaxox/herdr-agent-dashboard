@@ -77,6 +77,11 @@ func beadsEnv() []string {
 
 func fetchDetail(a Agent) Detail {
 	d := Detail{At: time.Now()}
+	if a.Parent != "" { // subagent: only its own log; bead, PR and git are the parent's
+		buf, _ := tailFile(a.Log)
+		parseSession(buf, &d)
+		return d
+	}
 	if beadRe.MatchString(a.Name) {
 		var bs []struct {
 			Title    string `json:"title"`
@@ -126,7 +131,8 @@ func fetchDetail(a Agent) Detail {
 	if c := strings.SplitN(run(a.Cwd, "git", "log", "-1", "--format=%s|%cr"), "|", 2); len(c) == 2 {
 		d.Commit, d.CommitAge = c[0], c[1]
 	}
-	parseSession(sessionTail(a.Cwd, a.Session), &d)
+	buf, _ := sessionTail(a.Cwd, a.Session)
+	parseSession(buf, &d)
 	return d
 }
 
@@ -284,7 +290,9 @@ func (m model) drawer(a Agent, w int) []string {
 		if d.Commit != "" {
 			git += fmt.Sprintf("\nlast commit: %s (%s)", d.Commit, d.CommitAge)
 		}
-		add("GIT", git)
+		if a.Parent == "" {
+			add("GIT", git)
+		}
 		sess := fmt.Sprintf("%s · context ~%dk tokens · last activity %s\nsession %s", firstOf(a.Model, "model unknown"), d.Ctx/1000, ago(d.LastAt), a.Session)
 		add("SESSION", sess)
 		if len(d.Tools) > 0 {
@@ -293,6 +301,16 @@ func (m model) drawer(a Agent, w int) []string {
 		if d.Said != "" {
 			add("SAID", trunc(strings.Join(strings.Fields(d.Said), " "), cfg.SaidChars))
 		}
+	}
+	if len(a.Kids) > 0 {
+		var ks []string
+		for _, k := range a.Kids {
+			ks = append(ks, k.SubType+": "+k.Name)
+		}
+		add("SUBAGENTS", strings.Join(ks, "\n"))
+	}
+	if a.Parent != "" {
+		add("SUBAGENT", fmt.Sprintf("%s of %s\n%s", a.SubType, a.Parent, firstOf(a.Log, "log not found")))
 	}
 	if len(a.MonDescs) > 0 {
 		add("MONITORING", strings.Join(a.MonDescs, "\n"))

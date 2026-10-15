@@ -5,7 +5,8 @@ It draws your agents as a topology: each repo's primary-checkout agent (for exam
 orchestrator) on top, the agents in its linked worktrees hanging below, one card per
 agent. Each card shows status, what the agent is doing right now, model, git branch,
 PR and CI state, and its bead. Click a card to open a verbose details drawer;
-double-click to jump to that agent's pane.
+double-click to jump to that agent's pane. Claude Code subagents an agent starts get
+their own cards (`⑂`) under it, and jumping to one focuses its parent's pane.
 
 ![The dashboard cycling through the graph, grid, tree, fan and table views, with a comet circling working cards and blocked and done agents pulsing](docs/dashboard.gif)
 
@@ -194,6 +195,7 @@ Opening a card shows a full-width drawer under its row:
 - **SESSION**: model, context size in tokens, time since last activity, session id.
 - **RECENT**: the last few tool calls, each with its target (file, command or pattern).
 - **SAID**: the agent's last message.
+- **SUBAGENTS**: Claude Code subagents (Agent tool calls) still running, as `type: description`.
 - **HERDR**: pane, workspace and tab ids, terminal title, working directory.
 
 ## The workflow this was built around
@@ -237,6 +239,7 @@ If you do things differently:
 | --- | --- | --- |
 | name, status, pane, workspace | `herdr api snapshot` | every `poll_seconds` |
 | activity (thinking / writing / tool / monitoring) | tail of the Claude session log | every `poll_seconds` |
+| subagents (their own cards, `⑂ subagents ×n` / `+⑂n` on the parent) | Agent calls in the session log without a result or final task-notification; each one's model and phase from its own log under `<session>/subagents/` | every `poll_seconds` |
 | what each monitor is watching (`MONITORING` row in the drawer) | the `description` of the Monitor call in the session log | every `poll_seconds` |
 | model | last `"model"` in the session log | every `poll_seconds` |
 | branch | `git branch --show-current` in the agent's cwd | every `poll_seconds` |
