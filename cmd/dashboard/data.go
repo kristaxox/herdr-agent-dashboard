@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -20,6 +21,8 @@ type Agent struct {
 	Branch, Model, Phase, Tool               string
 	Monitors                                 int      // live Monitor tasks, from the session log
 	MonDescs                                 []string // what they watch (the Monitor call's description), oldest first
+	Kids                                     []Agent  // running Claude subagents (Agent tool calls); flattened in after this agent
+	Parent, SubType, Log                     string   // subagents only: parent's name, subagent_type, path of its own session log
 	Workspace, Tab, Title                    string
 	PR                                       PR
 }
@@ -103,13 +106,16 @@ func enrichFast(a *Agent) {
 	if out, err := exec.Command("git", "-C", a.Cwd, "branch", "--show-current").Output(); err == nil {
 		a.Branch = strings.TrimSpace(string(out))
 	}
-	buf := sessionTail(a.Cwd, a.Session)
+	buf, session := sessionTail(a.Cwd, a.Session)
 	a.Model = lastModel(buf)
 	a.Phase, a.Tool = "", ""
 	a.MonDescs = activeMonitors(buf, time.Now())
 	a.Monitors = len(a.MonDescs)
+	a.Kids = subAgents(*a, session, activeSubagents(buf))
 	if a.Status == "working" {
 		a.Phase, a.Tool = lastPhase(buf)
+	} else if len(a.Kids) > 0 {
+		a.Phase = "subagents" // idle in herdr's eyes, but background subagents are running
 	} else if a.Monitors > 0 {
 		a.Phase = "monitoring" // idle in herdr's eyes, but waiting on a monitor
 	}
@@ -124,31 +130,45 @@ func claudeSlug(cwd string) string {
 
 var contRe = regexp.MustCompile(`"continuedInSessionId":"([^"]+)"`)
 
-// sessionTail reads the end of the session log. When a session was continued
-// (context compaction/clear) the old log ends with a pointer to the new one, but
-// herdr keeps reporting the old id, so follow the chain.
-func sessionTail(cwd, session string) []byte {
+func projectDir(cwd string) string {
 	home, _ := os.UserHomeDir()
+	return home + "/.claude/projects/" + claudeSlug(cwd) + "/"
+}
+
+// sessionTail reads the end of the session log and returns it with the id of the
+// log it came from. When a session was continued (context compaction/clear) the old
+// log ends with a pointer to the new one, but herdr keeps reporting the old id, so
+// follow the chain.
+func sessionTail(cwd, session string) ([]byte, string) {
 	var buf []byte
+	read := ""
 	for hop := 0; hop < 8 && session != ""; hop++ {
-		f, err := os.Open(home + "/.claude/projects/" + claudeSlug(cwd) + "/" + session + ".jsonl")
-		if err != nil {
+		b, ok := tailFile(projectDir(cwd) + session + ".jsonl")
+		if !ok {
 			break
 		}
-		st, _ := f.Stat()
-		tail := int64(cfg.SessionTailKB) << 10 // ponytail: tail only (monitors live up to ~30m); raise session_tail_kb if a model/monitor line is missed
-		off := max(st.Size()-tail, 0)
-		b := make([]byte, st.Size()-off)
-		f.ReadAt(b, off)
-		f.Close()
-		buf = b
+		buf, read = b, session
 		m := contRe.FindSubmatch(b)
 		if m == nil || string(m[1]) == session {
 			break
 		}
 		session = string(m[1])
 	}
-	return buf
+	return buf, read
+}
+
+func tailFile(path string) ([]byte, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	st, _ := f.Stat()
+	tail := int64(cfg.SessionTailKB) << 10 // ponytail: tail only (monitors live up to ~30m); raise session_tail_kb if a model/monitor line is missed
+	off := max(st.Size()-tail, 0)
+	b := make([]byte, st.Size()-off)
+	f.ReadAt(b, off)
+	return b, true
 }
 
 func lastModel(buf []byte) string {
@@ -197,6 +217,9 @@ func fetchPRs(as []Agent) map[string]PR {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for _, a := range as {
+		if a.Parent != "" {
+			continue // a subagent shares its parent's PR
+		}
 		wg.Add(1)
 		go func(a Agent) {
 			defer wg.Done()
@@ -322,6 +345,86 @@ func activeMonitors(buf []byte, now time.Time) []string {
 	out := make([]string, len(live))
 	for i, m := range live {
 		out[i] = firstOf(m.desc, "(no description)")
+	}
+	return out
+}
+
+var (
+	subCallRe   = regexp.MustCompile(`"id":"(toolu_\w+)","name":"(?:Agent|Task)","input":\{(.*)`)
+	subDescRe   = regexp.MustCompile(`"description":"((?:[^"\\]|\\.)*)"`)
+	subTypeRe   = regexp.MustCompile(`"subagent_type":"((?:[^"\\]|\\.)*)"`)
+	notifToolRe = regexp.MustCompile(`<tool-use-id>(toolu_\w+)</tool-use-id>`)
+)
+
+type sub struct{ id, typ, desc string }
+
+// activeSubagents lists Agent tool calls that haven't finished, oldest first.
+// A foreground call ends with its tool_result; a background one gets an
+// "Async agent launched" result first and ends with a <status> task-notification.
+// ponytail: a session killed mid-subagent leaves it "running" until it scrolls out of session_tail_kb.
+func activeSubagents(buf []byte) []sub {
+	var order []string
+	desc := map[string]sub{}
+	for _, l := range strings.Split(string(buf), "\n") {
+		switch {
+		case strings.Contains(l, `"type":"tool_use"`):
+			if m := subCallRe.FindStringSubmatch(l); m != nil {
+				d, t := "", "general-purpose"
+				if x := subDescRe.FindStringSubmatch(m[2]); x != nil {
+					d = unescape(x[1])
+				}
+				if x := subTypeRe.FindStringSubmatch(m[2]); x != nil {
+					t = unescape(x[1])
+				}
+				order = append(order, m[1])
+				desc[m[1]] = sub{m[1], t, firstOf(d, "(no description)")}
+			}
+		case strings.Contains(l, `"type":"tool_result"`) && !strings.Contains(l, "Async agent launched"):
+			for _, m := range toolIDRe.FindAllStringSubmatch(l, -1) {
+				delete(desc, m[1])
+			}
+		case strings.Contains(l, "<task-notification>") && strings.Contains(l, "<status>"):
+			if m := notifToolRe.FindStringSubmatch(l); m != nil {
+				delete(desc, m[1])
+			}
+		}
+	}
+	var out []sub
+	for _, id := range order {
+		if d, ok := desc[id]; ok {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// subAgents turns running Agent calls into cards. Claude Code writes each
+// subagent's log to <session>/subagents/agent-<id>.jsonl, next to a .meta.json
+// naming the tool call that started it; that log gives the model and phase.
+func subAgents(p Agent, session string, subs []sub) []Agent {
+	if len(subs) == 0 {
+		return nil
+	}
+	logs := map[string]string{} // tool_use id -> subagent log
+	metas, _ := filepath.Glob(projectDir(p.Cwd) + session + "/subagents/*.meta.json")
+	for _, f := range metas {
+		var meta struct {
+			ToolUseID string `json:"toolUseId"`
+		}
+		if b, err := os.ReadFile(f); err == nil && json.Unmarshal(b, &meta) == nil {
+			logs[meta.ToolUseID] = strings.TrimSuffix(f, ".meta.json") + ".jsonl"
+		}
+	}
+	var out []Agent
+	for _, s := range subs {
+		k := Agent{Name: s.desc, SubType: s.typ, Parent: p.Name, PaneID: p.PaneID + "/" + s.id, Status: "working",
+			Cwd: p.Cwd, Repo: p.Repo, WS: p.WS, Branch: p.Branch, Workspace: p.Workspace, Tab: p.Tab, Log: logs[s.id]}
+		if buf, ok := tailFile(k.Log); ok {
+			k.Model = lastModel(buf)
+			k.Phase, k.Tool = lastPhase(buf)
+			k.Session = strings.TrimSuffix(filepath.Base(k.Log), ".jsonl")
+		}
+		out = append(out, k)
 	}
 	return out
 }

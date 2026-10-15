@@ -73,7 +73,12 @@ func trunc(s string, n int) string {
 func (m model) View() tea.View {
 	var b strings.Builder
 	work, blocked, fail := 0, 0, 0
+	top := 0
 	for _, a := range m.agents {
+		if a.Parent != "" {
+			continue // subagents are not counted as agents
+		}
+		top++
 		switch a.Status {
 		case "working":
 			work++
@@ -85,7 +90,7 @@ func (m model) View() tea.View {
 		}
 	}
 	fmt.Fprintf(&b, " %s  %s   %s   %s   %s\n\n", c(111, "HERDR AGENT DASHBOARD"),
-		c(208, fmt.Sprintf("ACTIVE %d/%d", work, len(m.agents))),
+		c(208, fmt.Sprintf("ACTIVE %d/%d", work, top)),
 		c(205, fmt.Sprintf("BLOCKED %d", blocked)), c(205, fmt.Sprintf("CI FAIL %d", fail)),
 		c(240, "view: "+modes[m.mode]))
 	lines, hits := m.render()

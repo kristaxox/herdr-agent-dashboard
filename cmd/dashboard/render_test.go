@@ -14,6 +14,7 @@ func TestRenderViews(t *testing.T) {
 		{
 			{Name: "orchestrator", PaneID: "p1", Status: "idle", Repo: "demo", Primary: true},
 			{Name: "abc-123", PaneID: "p2", Status: "working", Repo: "demo", Phase: "writing", Tool: "Edit"},
+			{Name: "look around", PaneID: "p2/toolu_x", Status: "working", Repo: "demo", Parent: "abc-123", SubType: "Explore"},
 			{Name: "solo", PaneID: "p4", Status: "done", Repo: "other"},
 		},
 	} {
@@ -91,5 +92,29 @@ func TestSelectedRowStaysInverted(t *testing.T) {
 		if !found {
 			t.Errorf("%s: no selected row", modes[mode])
 		}
+	}
+}
+
+// graph hangs a subagent's card below its parent's card, and every card stays clickable
+func TestGraphSubagentUnderParent(t *testing.T) {
+	m := model{w: 120, h: 40, prs: map[string]PR{}, open: map[string]bool{}, details: map[string]Detail{}, mode: 1,
+		agents: []Agent{
+			{Name: "orchestrator", PaneID: "p1", Status: "idle", Repo: "r", Primary: true},
+			{Name: "w", PaneID: "p2", Status: "working", Repo: "r"},
+			{Name: "sub", PaneID: "p2/toolu_x", Status: "working", Repo: "r", Parent: "w", SubType: "Explore"},
+			{Name: "w2", PaneID: "p3", Status: "idle", Repo: "r"},
+		}}
+	top := map[int]int{}
+	_, hits := m.render()
+	for _, h := range hits {
+		if !h.tog {
+			top[h.ai] = h.y0
+		}
+	}
+	if len(top) != 4 {
+		t.Fatalf("cards with hits: %v", top)
+	}
+	if top[2] <= top[1] || top[1] != top[3] {
+		t.Errorf("sub at y=%d, parent at %d, sibling at %d", top[2], top[1], top[3])
 	}
 }

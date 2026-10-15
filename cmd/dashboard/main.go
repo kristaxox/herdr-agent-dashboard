@@ -76,7 +76,11 @@ func snapCmd() tea.Msg {
 		}
 		return a.Name < b.Name
 	})
-	return snapMsg(as)
+	var flat []Agent // each agent followed by its subagents
+	for _, a := range as {
+		flat = append(append(flat, a), a.Kids...)
+	}
+	return snapMsg(flat)
 }
 
 func rank(s string) int {
@@ -190,7 +194,7 @@ func (m model) jump(i int) tea.Cmd {
 	if i < 0 || i >= len(m.agents) {
 		return nil
 	}
-	pane := m.agents[i].PaneID
+	pane, _, _ := strings.Cut(m.agents[i].PaneID, "/") // a subagent jumps to its parent's pane
 	return func() tea.Msg {
 		exec.Command(herdrBin(), "agent", "focus", pane).Run()
 		if cfg.CloseOnJump {
@@ -239,6 +243,7 @@ var phaseStyle = map[string][2]any{
 	"writing":    {214, "✎ writing"},
 	"tool":       {45, "⚙ tool"},
 	"monitoring": {111, "◉ monitoring"},
+	"subagents":  {177, "⑂ subagents"},
 }
 
 func phaseLabel(a Agent) string {
@@ -249,6 +254,13 @@ func phaseLabel(a Agent) string {
 	s := p[1].(string)
 	if a.Tool != "" {
 		s += " " + trunc(a.Tool, 14)
+	}
+	if n := len(a.Kids); n > 0 {
+		if a.Phase == "subagents" {
+			s += fmt.Sprintf(" ×%d", n)
+		} else {
+			s += fmt.Sprintf(" +⑂%d", n)
+		}
 	}
 	if a.Monitors > 0 {
 		if a.Phase == "monitoring" {
