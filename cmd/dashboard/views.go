@@ -50,9 +50,11 @@ func indent(ls []string, n int) []string {
 	return out
 }
 
-func sel(s string, on bool) string {
+// sel puts a selected row on one background bar, padded to width w. Reverse
+// video would turn every coloured segment into a block of its own colour.
+func sel(s string, on bool, w int) string {
 	if on {
-		return "\x1b[7m" + s + "\x1b[27m"
+		return "\x1b[48;5;237m" + padTo(s, w) + "\x1b[49m"
 	}
 	return s
 }
@@ -83,7 +85,7 @@ func (m model) treeView() ([]string, []rect) {
 		l1 := fmt.Sprintf(" %s %s %s %s %s  %s  %s", c(edge, br), tri(m.open[a.PaneID]), m.dot(a), fit(name(a), 16), c(col, fit(a.Status, 8)), c(245, a.Model), phaseLabel(a))
 		l2 := fmt.Sprintf(" %s     %s  %s  %s", c(edge, vert), c(110, a.Branch), m.prTag(a), m.beadTag(a))
 		hits = append(hits, rect{4, len(lines), 6, len(lines) + 1, i, true}, rect{0, len(lines), m.w, len(lines) + 2, i, false})
-		lines = append(lines, sel(l1, i == m.sel), sel(l2, i == m.sel))
+		lines = append(lines, sel(l1, i == m.sel, m.w), sel(l2, i == m.sel, m.w))
 		if m.open[a.PaneID] {
 			lines = append(lines, indent(m.drawer(a, m.w-6), 5)...)
 		}
@@ -179,7 +181,7 @@ func (m model) fanView() ([]string, []rect) {
 				if !agentRow {
 					t = trunk(r < lastRow, r < lastRow, false, left) // the hub may land on a detail line
 				}
-				text = sel(text, ai == m.sel)
+				text = sel(text, ai == m.sel, m.w-hubW-2)
 			}
 			line := hub + spacer + c(ec, t) + text
 			if ai >= 0 {
@@ -355,7 +357,7 @@ func (m model) tableView() ([]string, []rect) {
 		l := fmt.Sprintf(" %s %s %s%s%s%s%s%s%s", tri(m.open[a.PaneID]), m.dot(a), fit(name(a), 16), c(col, fit(a.Status, 9)),
 			padTo(phaseLabel(a), 22), fit(a.Model, 16), fit(a.Repo, 14), c(110, fit(a.Branch, 36)), m.prTag(a))
 		hits = append(hits, rect{1, len(lines), 3, len(lines) + 1, i, true}, rect{0, len(lines), m.w, len(lines) + 1, i, false})
-		lines = append(lines, sel(l, i == m.sel))
+		lines = append(lines, sel(l, i == m.sel, m.w))
 		if m.open[a.PaneID] {
 			lines = append(lines, indent(m.drawer(a, m.w-4), 3)...)
 		}
